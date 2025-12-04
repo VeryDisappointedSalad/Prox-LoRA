@@ -5,8 +5,8 @@ from prox_lora.utils.io import PROJECT_ROOT
 
 
 def main() -> None:
-    config = get_config(FullTrainConfig, "mnist_example_FISTA")
-    config = deep_replace(config, {"name": "testing"})
+    config = get_config(FullTrainConfig, "mnist_example_ISTA")
+    config = deep_replace(config, {"name": "ISTA_test"})
     run_training(config, checkpoint_dir=PROJECT_ROOT / "checkpoints")
 
 

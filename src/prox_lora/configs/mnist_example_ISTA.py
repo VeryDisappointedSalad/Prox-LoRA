@@ -6,15 +6,15 @@ from prox_lora.models.example_cnn import ExampleCNNConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
 # first prox
-import prox_lora.optimizers.FISTA_optimizer
+import prox_lora.optimizers.ISTA_optimizer
 
 register_configs(
     FullTrainConfig(
-        name="mnist_example_FISTA",
+        name="mnist_example_ISTA",
         datamodule=CIFAR10Config(),
         dataloader=DataLoaderConfig(batch_size=64, num_workers=4, pin_memory=True),
         model=ExampleCNNConfig(input_shape=(3, 32, 32), num_classes=10),
-        optimizer=OptimizerConfig(opt="fista", lr=0.01, weight_decay=1e-4, momentum=0.5),
+        optimizer=OptimizerConfig(opt="ista", lr=0.01, weight_decay=1e-4, momentum=0.5),
         scheduler=SchedulerConfig(sched="cosine", num_epochs=10, warmup_epochs=1, min_lr=1e-5),
         trainer=TrainerConfig(max_epochs=10, log_every_n_steps=50),
     )
