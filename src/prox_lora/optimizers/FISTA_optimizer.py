@@ -22,9 +22,9 @@ class FISTA(Optimizer):
     y_{t+1} = prox(x_t - lr * grad)
     y_{t+1} = sgn(x_t) * max(|abs(x_t)|-prox_lambda * lr, 0)
     x_{t+1} = y_{t+1} + ((t-1)/(t+2)) * (y_{t+1} - y_t)
-    """
+    """ 
 
-    def __init__(self, params, lr = 1e-3, momentum = 0, weight_decay = 0, prox_lambda = 0.1, **kwargs):
+    def __init__(self, params, lr = 1e-3, momentum = 0, weight_decay = 0, prox_lambda = 0.001, **kwargs):
         
         if lr < 0:
             raise ValueError(f"Invalid learning rate: {lr} < 0")
@@ -103,18 +103,3 @@ class FISTA(Optimizer):
 
 info = OptimInfo(name='fista', opt_class=FISTA, description="Custom FISTA Optimizer")
 default_registry.register(info)
-
-
-#if hasattr(timm.optim.optim_factory, '_OPTIMIZERS'):
-#    timm.optim.optim_factory._OPTIMIZERS['fista'] = FISTA
-#    print(f"Successfully registered 'prox_sgd'")
-#    #default_registry.register('fista', ProximalSGD)
-
-#internal_factory._OPTIMIZERS['fista'] = FISTA
-
-
-#if 'fista' in default_registry:
-#    del default_registry['fista'] # Clear if exists to avoid conflicts
-   
-#default_registry.register('fista', FISTA)
-#print('Registered FISTA!')
