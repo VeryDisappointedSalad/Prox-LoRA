@@ -5,6 +5,8 @@ from prox_lora.infrastructure.trainer import FullTrainConfig, TrainerConfig
 from prox_lora.models.example_cnn import ExampleCNNConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
+# the basic MNIST example configuration
+
 register_configs(
     FullTrainConfig(
         name="mnist_example",
