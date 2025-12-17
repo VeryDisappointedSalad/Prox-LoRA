@@ -71,8 +71,9 @@ class Classifier(LightningModule):
 
     def on_train_epoch_end(self) -> None:
         lr_scheduler = cast(timm.scheduler.scheduler.Scheduler, self.lr_schedulers())
-        metric = self.trainer.callback_metrics["_loss/val"]  # Metric used for PlateauLRScheduler.
-        lr_scheduler.step(epoch=self.current_epoch, metric=metric.item())
+        if lr_scheduler is not None:
+            metric = self.trainer.callback_metrics["_loss/val"]  # Metric used for PlateauLRScheduler.
+            lr_scheduler.step(epoch=self.current_epoch, metric=metric.item())
 
     def configure_optimizers(self) -> LightningOptimizerConfig | OptimizerLRSchedulerConfig:
         # If we wanted, for example, different lr for head vs. backbone, we could do:
