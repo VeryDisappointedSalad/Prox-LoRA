@@ -73,11 +73,17 @@ def run_training(
     pprint.pp(config, indent=4, width=200, depth=4, compact=True)
 
     datamodule = config.datamodule.instantiate(dataloader=config.dataloader)
+    datamodule.prepare_data()
+    datamodule.setup()
+    steps_in_epoch = len(datamodule.train_dataloader())
     model = config.model.instantiate()
-    classifier = Classifier(model=model, optimizer=config.optimizer, scheduler=config.scheduler)
+    classifier = Classifier(
+        model=model, optimizer=config.optimizer, scheduler=config.scheduler, steps_in_epoch=steps_in_epoch
+    )
 
+    task: clearml.Task | None = None
     if config.clearml:
-        task: clearml.Task = clearml.Task.init(project_name="Prox-LoRA", task_name=config.name)
+        task = clearml.Task.init(project_name="Prox-LoRA", task_name=config.name)
         task.set_parameters_as_dict(deep_asdict(config))
 
     trainer = L.Trainer(
@@ -105,7 +111,15 @@ def run_training(
         version_dir = Path(trainer.logger.log_dir)
         version_dir.mkdir(parents=True, exist_ok=True)
         save_config(config, version_dir / "config.yaml")
-    if config.resume:
-        trainer.fit(classifier, datamodule, ckpt_path="last")
-    else:
-        trainer.fit(classifier, datamodule)
+
+    try:
+        if config.resume:
+            trainer.fit(classifier, datamodule, ckpt_path="last")
+        else:
+            trainer.fit(classifier, datamodule)
+    finally:
+        if task is not None:
+            print("Flushing ClearML, this may take a while...")
+            task.flush(wait_for_uploads=True)
+            print("Flushed.")
+            # task.close()

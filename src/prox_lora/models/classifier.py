@@ -1,3 +1,4 @@
+from copy import replace
 from dataclasses import asdict
 from typing import Literal, cast
 
@@ -28,13 +29,20 @@ class Classifier(LightningModule):
             decay_milestones=[90, 180, 270], cooldown_epoch=0, patience_epochs=10, decay_rate=0.1,
             min_lr=0, warmup_lr=1e-05, warmup_epochs=0.
         See: https://huggingface.co/docs/timm/reference/schedulers#timm.scheduler.create_scheduler_v2
+    - steps_in_epoch: Number of batches in an epoch, used to convert scheduler args from epochs to steps if needed.
     """
 
-    def __init__(self, model: nn.Module, optimizer: OptimizerConfig, scheduler: SchedulerConfig) -> None:
+    def __init__(
+        self, model: nn.Module, optimizer: OptimizerConfig, scheduler: SchedulerConfig, steps_in_epoch: int = 0
+    ) -> None:
         super().__init__()
         self.model = model
         self.optimizer_config = optimizer
+        if not scheduler.step_on_epochs and not scheduler.updates_per_epoch and steps_in_epoch:
+            scheduler = replace(scheduler, updates_per_epoch=steps_in_epoch)
         self.scheduler_config = scheduler
+
+        self.steps_in_epoch = steps_in_epoch
 
         # Disable training_step wrapper that implicitly adds: zero_grad, backward, optimizer and scheduler step, gradient clipping, ...
         self.automatic_optimization = False
@@ -62,6 +70,7 @@ class Classifier(LightningModule):
         self.manual_backward(loss)
 
         optimizer.step()
+        self._step_scheduler("batch")
 
     def validation_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> None:
         self.compute_loss(batch, phase="val")
@@ -70,10 +79,20 @@ class Classifier(LightningModule):
         self.compute_loss(batch, phase="test")
 
     def on_train_epoch_end(self) -> None:
+        self._step_scheduler("epoch")
+
+    def _step_scheduler(self, kind: Literal["batch", "epoch"]) -> None:
         lr_scheduler = cast(timm.scheduler.scheduler.Scheduler, self.lr_schedulers())
-        if lr_scheduler is not None:
-            metric = self.trainer.callback_metrics["_loss/val"]  # Metric used for PlateauLRScheduler.
-            lr_scheduler.step(epoch=self.current_epoch, metric=metric.item())
+        if lr_scheduler is None:
+            return
+        try:
+            metric = self.trainer.callback_metrics["_loss/val"].item()  # Metric used for PlateauLRScheduler.
+        except KeyError:
+            metric = 0.0
+        if kind == "epoch":
+            lr_scheduler.step(epoch=self.current_epoch, metric=metric)
+        else:
+            lr_scheduler.step_update(num_updates=self.global_step, metric=metric)
 
     def configure_optimizers(self) -> LightningOptimizerConfig | OptimizerLRSchedulerConfig:
         # If we wanted, for example, different lr for head vs. backbone, we could do:
@@ -89,4 +108,10 @@ class Classifier(LightningModule):
             return {"optimizer": optimizer}
         else:
             scheduler, _num_epochs = create_scheduler_v2(optimizer, **asdict(self.scheduler_config))
-            return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler}}
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {
+                    "scheduler": scheduler,
+                    "interval": "epoch" if self.scheduler_config.step_on_epochs else "step",
+                },
+            }

@@ -1,3 +1,4 @@
+import logging
 import os
 import random
 import signal
@@ -57,11 +58,18 @@ def _setup_torch(seed: int) -> None:
 
     torch.manual_seed(seed)
 
-    torch.set_float32_matmul_precision("medium")
-    torch.backends.cuda.matmul.allow_tf32 = True
-    torch.backends.cudnn.allow_tf32 = True
-    torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
     torch.set_printoptions(precision=2, threshold=6, edgeitems=3, linewidth=200)  # type: ignore[no-untyped-call]
+
+    torch.backends.fp32_precision = "tf32"  # type: ignore[attr-defined]
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
+    torch.backends.cuda.matmul.fp32_precision = "tf32"
+    torch.backends.cudnn.allow_tf32 = True
+    torch.backends.cudnn.fp32_precision = "tf32"  # type: ignore[attr-defined]
+    torch.backends.cudnn.conv.fp32_precision = "tf32"  # type: ignore[attr-defined]
+    torch.backends.cudnn.rnn.fp32_precision = "tf32"  # type: ignore[attr-defined]
+    torch.set_float32_matmul_precision("medium")
+
     if not torch.backends.cuda.flash_sdp_enabled():  # type: ignore[no-untyped-call]
         print("Warning: flash scaled-dot-product attention is not available :(")
 
@@ -95,5 +103,15 @@ def _silence_spurious_warnings() -> None:
     # open-clip-torch=3.2.0's TimmModel uses a deprecated import from timm.
     warnings.filterwarnings("ignore", message=".*Importing from timm.models.helpers is deprecated")
 
-    # torch=2.10.0  uses it's own deprecated functionality.
-    warnings.filterwarnings("ignore", message=".*`isinstance(treespec, LeafSpec)` is deprecated")
+    # torch=2.10.0 uses it's own deprecated functionality.
+    warnings.filterwarnings("ignore", message=r"(?s).*isinstance\(treespec, LeafSpec\)")
+
+    # torchvision=0.25.0's cifar10 dataset uses an pickle with old numpy arrays.
+    warnings.filterwarnings("ignore", message=".* align should be passed as Python or NumPy boolean but got")
+
+    logging.getLogger("lightning.pytorch.utilities.rank_zero").addFilter(_TipFilter())
+
+
+class _TipFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "💡 Tip: For seamless cloud logging" not in record.getMessage()
