@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 import traceback
+import warnings
 from collections.abc import Callable
 from typing import Any
 
@@ -35,6 +36,7 @@ class CLI:
         dotenv.load_dotenv()
 
         _setup_sigusr_handlers()
+        _silence_spurious_warnings()
 
         # Seed like `lightning.fabric.utilities.seed.seed_everything`, without importing it.
         os.environ["PL_GLOBAL_SEED"] = str(self.seed)
@@ -85,3 +87,13 @@ def _setup_sigusr_handlers() -> None:
 
     signal.signal(signal.SIGUSR1, sigusr1_handler)
     signal.signal(signal.SIGUSR2, sigusr2_handler)
+
+
+def _silence_spurious_warnings() -> None:
+    """Setup warning filters to silence a few useless ones."""
+
+    # open-clip-torch=3.2.0's TimmModel uses a deprecated import from timm.
+    warnings.filterwarnings("ignore", message=".*Importing from timm.models.helpers is deprecated")
+
+    # torch=2.10.0  uses it's own deprecated functionality.
+    warnings.filterwarnings("ignore", message=".*`isinstance(treespec, LeafSpec)` is deprecated")

@@ -16,6 +16,7 @@ dependencies = [
     "lightning>=2.5",
     "matplotlib>=3.10",
     "numpy>=2.2",
+    "open_clip_torch",
     # "opencv-python>=4.12",
     "pandas>=2.3",
     "pillow>=11.0.0",
@@ -38,8 +39,8 @@ dependencies = [
 # Published optional dependencies, or "extras". We use them for different architectures (CPU/CUDA/Apple Silicon/...).
 # See https://docs.astral.sh/uv/guides/integration/pytorch/#configuring-accelerators-with-environment-markers
 [project.optional-dependencies]
-cpu = ["torch>=2.8", "torchvision>=0.23,<0.24"]  # No packages yet for CPU torchvision 0.24 as of 2025-11-03.
-cu128 = ["torch>=2.9", "torchvision>=0.24", "pynvml"]
+cpu = ["torch>=2.10", "torchvision>=0.25"]
+cu128 = ["torch>=2.10", "torchvision>=0.25", "pynvml"]
 
 
 # Local dependencies for development.
@@ -114,6 +115,8 @@ module = [
     "mlflow.*",
     "joblib",
     "numba",
+    "open_clip.*",
+    "open_clip_torch",
 ]
 ignore_missing_imports = true
 implicit_reexport = true
