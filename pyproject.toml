@@ -7,15 +7,16 @@ authors = [{ name = "Karol Chojnacki" }, { name = "Marcin Wrochna" }]
 urls.repository = "https://github.com/VeryDisappointedSalad/Prox-LoRA"
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    "clearml",
+    "clearml>=2.1.3",
     "einops",
     "huggingface-hub",
     "ipykernel",
     "ipywidgets",
     "jupyter>=1.1",
-    "lightning>=2.5",
+    "lightning>=2.6.1",
     "matplotlib>=3.10",
     "numpy>=2.2",
+    "open_clip_torch",
     # "opencv-python>=4.12",
     "pandas>=2.3",
     "pillow>=11.0.0",
@@ -38,9 +39,9 @@ dependencies = [
 # Published optional dependencies, or "extras". We use them for different architectures (CPU/CUDA/Apple Silicon/...).
 # See https://docs.astral.sh/uv/guides/integration/pytorch/#configuring-accelerators-with-environment-markers
 [project.optional-dependencies]
-cpu = ["torch>=2.8", "torchvision>=0.23,<0.24"]  # No packages yet for CPU torchvision 0.24 as of 2025-11-03.
-cu128 = ["torch>=2.9", "torchvision>=0.24", "pynvml"]
-
+cpu = ["torch>=2.10", "torchvision>=0.25"]
+cu128 = ["torch>=2.10", "torchvision>=0.25", "nvidia-ml-py"]
+cu130 = ["torch>=2.10", "torchvision>=0.25", "nvidia-ml-py"]
 
 # Local dependencies for development.
 [dependency-groups]
@@ -56,12 +57,12 @@ dev = [
 
 
 [tool.uv]
-conflicts = [[{ extra = "cpu" }, { extra = "cu128" }]]  # Can't have both CPU and CUDA versions installed.
+conflicts = [[{ extra = "cpu" }, { extra = "cu128" }, { extra = "cu130" }]]  # Can't have both CPU and CUDA versions installed.
 
 
 [tool.uv.sources]
-torch =       [{extra="cpu", index="pytorch-cpu"}, {extra="cu128", index="pytorch-cu128"}]
-torchvision = [{extra="cpu", index="pytorch-cpu"}, {extra="cu128", index="pytorch-cu128"}]
+torch =       [{extra="cpu", index="pytorch-cpu"}, {extra="cu128", index="pytorch-cu128"}, {extra="cu130", index="pytorch-cu130"}]
+torchvision = [{extra="cpu", index="pytorch-cpu"}, {extra="cu128", index="pytorch-cu128"}, {extra="cu130", index="pytorch-cu130"}]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
@@ -71,6 +72,11 @@ explicit = true
 [[tool.uv.index]]
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 
@@ -114,6 +120,8 @@ module = [
     "mlflow.*",
     "joblib",
     "numba",
+    "open_clip.*",
+    "open_clip_torch",
 ]
 ignore_missing_imports = true
 implicit_reexport = true

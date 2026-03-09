@@ -17,6 +17,7 @@
 
 
 ## Commands
+(You might need to add `--extra cpu` after `uv run` to avoid downloading CUDA).
 * Training: `uv run src/prox_lora/train.py`
 
 
