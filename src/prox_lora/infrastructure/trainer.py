@@ -18,6 +18,7 @@ from prox_lora.datasets.base_data_module import DataLoaderConfig
 from prox_lora.datasets.cifar import CIFAR10Config
 from prox_lora.datasets.mnist import MNISTConfig
 from prox_lora.infrastructure.configs import deep_asdict, save_config, yaml
+from prox_lora.models.biomedclip import BiomedCLIPConfig
 from prox_lora.models.classifier import Classifier
 from prox_lora.models.example_cnn import ExampleCNNConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
@@ -51,7 +52,7 @@ class TrainerConfig:
 class FullTrainConfig:
     name: str
     datamodule: MNISTConfig | CIFAR10Config
-    model: ExampleCNNConfig
+    model: ExampleCNNConfig | BiomedCLIPConfig
     dataloader: DataLoaderConfig = DataLoaderConfig(batch_size=64, num_workers=4, pin_memory=True)
     optimizer: OptimizerConfig = field(
         default_factory=lambda: OptimizerConfig(opt="adamw", lr=0.01, weight_decay=1e-4, momentum=0.9)
@@ -59,6 +60,7 @@ class FullTrainConfig:
     scheduler: SchedulerConfig = SchedulerConfig(sched="none")
     trainer: TrainerConfig = TrainerConfig()
     resume: bool = False
+    clearml: bool = True
 
 
 def run_training(
@@ -71,11 +73,18 @@ def run_training(
     pprint.pp(config, indent=4, width=200, depth=4, compact=True)
 
     datamodule = config.datamodule.instantiate(dataloader=config.dataloader)
+    datamodule.prepare_data()
+    datamodule.setup()
+    steps_in_epoch = len(datamodule.train_dataloader())
     model = config.model.instantiate()
-    classifier = Classifier(model=model, optimizer=config.optimizer, scheduler=config.scheduler)
+    classifier = Classifier(
+        model=model, optimizer=config.optimizer, scheduler=config.scheduler, steps_in_epoch=steps_in_epoch
+    )
 
-    task: clearml.Task = clearml.Task.init(project_name="Prox-LoRA", task_name=config.name)
-    task.set_parameters_as_dict(deep_asdict(config))
+    task: clearml.Task | None = None
+    if config.clearml:
+        task = clearml.Task.init(project_name="Prox-LoRA", task_name=config.name)
+        task.set_parameters_as_dict(deep_asdict(config))
 
     trainer = L.Trainer(
         default_root_dir=checkpoint_dir / config.name,
@@ -102,7 +111,15 @@ def run_training(
         version_dir = Path(trainer.logger.log_dir)
         version_dir.mkdir(parents=True, exist_ok=True)
         save_config(config, version_dir / "config.yaml")
-    if config.resume:
-        trainer.fit(classifier, datamodule, ckpt_path="last")
-    else:
-        trainer.fit(classifier, datamodule)
+
+    try:
+        if config.resume:
+            trainer.fit(classifier, datamodule, ckpt_path="last")
+        else:
+            trainer.fit(classifier, datamodule)
+    finally:
+        if task is not None:
+            print("Flushing ClearML, this may take a while...")
+            task.flush(wait_for_uploads=True)
+            print("Flushed.")
+            # task.close()

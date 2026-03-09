@@ -1,11 +1,6 @@
 import torch
 from torch.optim import Optimizer
 
-#from timm.optim._optim_factory import default_registry
-
-#import timm.optim.optim_factory
-#import timm.optim._optim_factory as internal_factory ### _optim_factory instead of optim_factory
-#from timm.optim.optim_factory import default_registry
 from timm.optim._optim_factory import default_registry
 from timm.optim._optim_factory import OptimInfo
 
@@ -24,7 +19,7 @@ class FISTA(Optimizer):
     x_{t+1} = y_{t+1} + ((t-1)/(t+2)) * (y_{t+1} - y_t)
     """ 
 
-    def __init__(self, params, lr = 1e-3, momentum = 0, weight_decay = 0, prox_lambda = 0.001, **kwargs):
+    def __init__(self, params, lr = 1e-3, momentum = 0, weight_decay = 0, prox_lambda = 0.01, **kwargs):
         
         if lr < 0:
             raise ValueError(f"Invalid learning rate: {lr} < 0")
