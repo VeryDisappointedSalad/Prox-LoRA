@@ -74,7 +74,6 @@ class Classifier(LightningModule):
 
     def validation_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> None:
         self.compute_loss(batch, phase="val")
-        # logowanie obrazków do integrated gradients
 
     def test_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> None:
         self.compute_loss(batch, phase="test")

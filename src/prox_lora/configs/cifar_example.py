@@ -5,10 +5,6 @@ from prox_lora.infrastructure.trainer import FullTrainConfig, TrainerConfig
 from prox_lora.models.example_cnn import ExampleCNNConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
-import prox_lora.optimizers.ISTA_optimizer
-import prox_lora.optimizers.FISTA_optimizer
-import prox_lora.optimizers.ADMM_optimizer
-
 register_configs(
     FullTrainConfig(
         name="cifar_example",

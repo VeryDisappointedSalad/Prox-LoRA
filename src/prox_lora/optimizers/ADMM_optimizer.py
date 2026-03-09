@@ -18,7 +18,7 @@ class ADMM(Optimizer):
     L_rho(theta, z, u) = Loss_function(theta) + lambda * L1_regularization(z) + (rho/2) * ||theta - z + u||_2^2
     """
 
-    def __init__(self, params, lr = 1e-3, momentum = 0, weight_decay = 0, prox_lambda = 0.001, rho = 0.001, **kwargs):
+    def __init__(self, params, lr = 1e-3, momentum = 0, weight_decay = 0, prox_lambda = 0.001, rho = 1.0, **kwargs):
 
         if lr < 0:
             raise ValueError(f"Invalid learning rate: {lr} < 0")
