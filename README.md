@@ -26,4 +26,3 @@
 * Linting: `ruff check src/` or [Ruff](https://marketplace.visualstudio.com/items?itemName=charliermarsh.ruff) extension.
 * Auto import sorting: `ruff check --select I  --fix` or `Shift+LeftAlt+O`.
 * Auto formatting: `ruff format src/` (possibly with `--check`) or `Ctrl+Shift+I`.
-
