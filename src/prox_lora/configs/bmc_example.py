@@ -24,5 +24,5 @@ register_configs(
         optimizer=OptimizerConfig(opt="adamw", lr=1e-5, weight_decay=1e-5, momentum=0.9),
         scheduler=SchedulerConfig(sched="cosine", num_epochs=20, warmup_epochs=1, min_lr=1e-5, step_on_epochs=False),
         trainer=TrainerConfig(max_epochs=20, log_every_n_steps=50),
-    )
+    ),
 )
