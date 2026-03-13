@@ -1,44 +1,45 @@
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import cast
+
 import pandas as pd
 import torch
-
 from PIL import Image
-from pathlib import Path
-from dataclasses import dataclass
-from typing import cast
 from torch import Tensor
-from torch.utils.data import Dataset, random_split
+from torch.utils.data import random_split
 from torchvision.transforms import v2
 
+from prox_lora.datasets.common import SizedDataset
 from prox_lora.infrastructure.configs import yaml
 from prox_lora.utils.io import PROJECT_ROOT
+
 from .base_data_module import BaseDataModule, DataLoaderConfig
 
 
-class KaggleDRDataset(Dataset):
-    def __init__(self, img_dir: Path, csv_path: Path, transform=None):
-
+class KaggleDRDataset(SizedDataset[tuple[Tensor, int]]):
+    def __init__(self, img_dir: Path, csv_path: Path, transform: Callable[[Image.Image], Tensor] | None = None) -> None:
         self.img_dir = img_dir
         self.transform = transform
 
         raw_df = pd.read_csv(csv_path)
         self.df = raw_df[raw_df.apply(lambda x: (img_dir / f"{x.iloc[0]}.jpeg").exists(), axis=1)]
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.df)
 
-    def __getitem__(self, idx):
-
+    def __getitem__(self, idx: int) -> tuple[Tensor, int]:
         img_id = self.df.iloc[idx, 0]
-        label = int(self.df.iloc[idx, 1])
-        img_path = self.img_dir / f"{img_id}.jpeg"
-        image = Image.open(img_path).convert("RGB")
-        if self.transform:
-            image = self.transform(image)
-        return image, label
+        label = int(cast(int, self.df.iloc[idx, 1]))
+        image = Image.open(self.img_dir / f"{img_id}.jpeg").convert("RGB")
+        if self.transform is not None:
+            return self.transform(image), label
+        else:
+            return image, label  # type: ignore[return-value]
 
 
 class DRDataModule(BaseDataModule[tuple[Tensor, int]]):
-    def __init__(self, dataloader: DataLoaderConfig | None = None, augmentations: bool = False) -> None:
+    def __init__(self, dataloader: DataLoaderConfig | None = None, *, augmentations: bool = False) -> None:
         super().__init__(num_classes=5, dataloader=dataloader)
         self.data_dir = PROJECT_ROOT / "data" / "retinopathy"
 
@@ -60,7 +61,7 @@ class DRDataModule(BaseDataModule[tuple[Tensor, int]]):
                 [
                     v2.RandomHorizontalFlip(p=0.5),
                     v2.RandomVerticalFlip(p=0.5),
-                    v2.RandomRotation(degrees=15),
+                    v2.RandomRotation(degrees=15),  # type: ignore[arg-type]
                     standard_transform,
                 ]
             )
@@ -74,7 +75,10 @@ class DRDataModule(BaseDataModule[tuple[Tensor, int]]):
                 transform=self.train_transforms,
             )
             # again hardcoded 9/1 split
-            self.train_dataset, self.val_dataset = random_split(full_dataset, [0.9, 0.1])
+            rng = torch.Generator().manual_seed(42)
+            self.train_dataset, self.val_dataset = cast(
+                list[SizedDataset[tuple[Tensor, int]]], random_split(full_dataset, [0.9, 0.1], generator=rng)
+            )
 
         if stage == "test" or stage is None:
             self.test_dataset = KaggleDRDataset(

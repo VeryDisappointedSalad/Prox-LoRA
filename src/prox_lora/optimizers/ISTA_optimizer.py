@@ -1,9 +1,10 @@
+from collections.abc import Callable, Iterable
+from typing import Any, overload
+
 import torch
+from timm.optim._optim_factory import OptimInfo, default_registry
+from torch import nn
 from torch.optim import Optimizer
-
-
-from timm.optim._optim_factory import default_registry
-from timm.optim._optim_factory import OptimInfo
 
 
 class ISTA(Optimizer):
@@ -17,7 +18,15 @@ class ISTA(Optimizer):
     theta_{t+1} = sgn(theta') * max(|abs(theta')|-prox_lambda * lr, 0)
     """
 
-    def __init__(self, params, lr=1e-3, momentum=0, weight_decay=0, prox_lambda=0.01, **kwargs):
+    def __init__(
+        self,
+        params: Iterable[nn.Parameter],
+        lr: float = 1e-3,
+        momentum: float = 0,
+        weight_decay: float = 0,
+        prox_lambda: float = 0.01,
+        **kwargs: Any,
+    ) -> None:
 
         if lr < 0:
             raise ValueError(f"Invalid learning rate: {lr} < 0")
@@ -28,8 +37,14 @@ class ISTA(Optimizer):
 
         super().__init__(params, defaults)
 
+    @overload
+    def step(self, closure: None = None) -> None: ...
+
+    @overload
+    def step(self, closure: Callable[[], float]) -> float: ...
+
     @torch.no_grad()
-    def step(self, closure=None):
+    def step(self, closure: Callable[[], float] | None = None) -> float | None:
         # print("ISTA OPTIMIZER IS RUNNING!")
         loss = None
         if closure is not None:
