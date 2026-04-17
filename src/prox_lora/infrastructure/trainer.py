@@ -59,7 +59,7 @@ class FullTrainConfig:
     )
     scheduler: SchedulerConfig = SchedulerConfig(sched="none")
     trainer: TrainerConfig = TrainerConfig()
-    resume: bool = False
+    resume: bool = True
     clearml: bool = True
 
 
@@ -99,6 +99,9 @@ def run_training(
                 monitor=metric_for_checkpointing,
                 save_top_k=1,
                 verbose=False,
+
+                # to resume finetuning and create the last.ckpt
+                save_last = True
             ),
             RichProgressBar(leave=True, console_kwargs=dict(force_terminal=True, force_interactive=True, width=250)),
             RichModelSummary(max_depth=model_summary_depth),

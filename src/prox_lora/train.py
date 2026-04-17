@@ -5,12 +5,13 @@ from prox_lora.utils.io import PROJECT_ROOT
 
 
 def main() -> None:
-    #config = get_config(FullTrainConfig, "mnist_example_FISTA")
-    #config = deep_replace(config, {"name": "FISTA_mnist_after_LR_and_config_debug"})
-    config = get_config(FullTrainConfig, "bmc_example")
-    config = deep_replace(config, {"name": "BioMedCLIP-Adam", "dataloader.pin_memory": False})
+    #config = get_config(FullTrainConfig, "bmc_example")
+    config = get_config(FullTrainConfig, "CNN_retinopathy")
+    #config = deep_replace(config, {"name": "BioMed_DR_Adam", "dataloader.pin_memory": False})
+    config = deep_replace(config, {"name": "CNN_DR_AdamW", "dataloader.pin_memory": False})
     run_training(config, checkpoint_dir=PROJECT_ROOT / "checkpoints")
 
 
 if __name__ == "__main__":
     CLI(main, seed=42).run()
+

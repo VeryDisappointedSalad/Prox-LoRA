@@ -33,6 +33,7 @@ dependencies = [
     "transformers>=4.55",
     "tqdm",
     "typing-extensions",
+    "foolbox>=3.3.4",
 ]
 
 

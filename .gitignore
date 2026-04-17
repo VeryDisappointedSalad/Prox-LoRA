@@ -17,3 +17,7 @@ __pypackages__/
 .vscode/
 
 zibaldone.md
+
+# Project specific?
+/logs
+*.ckpt
