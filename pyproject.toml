@@ -13,11 +13,13 @@ dependencies = [
     "ipykernel",
     "ipywidgets",
     "jupyter>=1.1",
+    "kaggle>=2.0",
     "lightning>=2.6.1",
     "matplotlib>=3.10",
+    "numba",
     "numpy>=2.2",
     "open_clip_torch",
-    # "opencv-python>=4.12",
+    "opencv-python-headless>=4.12",
     "pandas>=2.3",
     "pillow>=11.0.0",
     "psutil",              # logging CPU stats.
@@ -81,7 +83,7 @@ explicit = true
 
 
 [build-system]
-requires = ["uv_build>=0.9.6,<0.10.0"]
+requires = ["uv_build>=0.9.6,<0.11.0"]
 build-backend = "uv_build"
 
 

@@ -12,6 +12,7 @@ register_configs(
         dataloader=DataLoaderConfig(batch_size=64, num_workers=4, pin_memory=True),
         model=ExampleCNNConfig(input_shape=(3, 32, 32), hidden_channels=(120, 84), num_classes=10),
         optimizer=OptimizerConfig(opt="adamw", lr=2e-3, weight_decay=1e-5, momentum=0.9),
+        # optimizer=OptimizerConfig(opt="fista", lr=0.002, weight_decay=1e-5, momentum=0.9),
         scheduler=SchedulerConfig(sched="cosine", num_epochs=20, warmup_epochs=1, min_lr=1e-5, step_on_epochs=False),
         trainer=TrainerConfig(max_epochs=20, log_every_n_steps=50),
     )

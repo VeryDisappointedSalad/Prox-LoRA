@@ -14,5 +14,23 @@ register_configs(
         optimizer=OptimizerConfig(opt="adamw", lr=0.01, weight_decay=1e-4, momentum=0.9),
         scheduler=SchedulerConfig(sched="cosine", num_epochs=10, warmup_epochs=1, min_lr=1e-5, step_on_epochs=False),
         trainer=TrainerConfig(max_epochs=10, log_every_n_steps=50),
-    )
+    ),
+    FullTrainConfig(
+        name="mnist_example_ISTA",
+        datamodule=MNISTConfig(),
+        dataloader=DataLoaderConfig(batch_size=64, num_workers=4, pin_memory=True),
+        model=ExampleCNNConfig(input_shape=(3, 28, 28), num_classes=10),
+        optimizer=OptimizerConfig(opt="ista", lr=0.01, weight_decay=1e-4, momentum=0.5),
+        scheduler=SchedulerConfig(sched="cosine", num_epochs=10, warmup_epochs=1, min_lr=1e-5, step_on_epochs=False),
+        trainer=TrainerConfig(max_epochs=10, log_every_n_steps=50),
+    ),
+    FullTrainConfig(
+        name="mnist_example_FISTA",
+        datamodule=MNISTConfig(),
+        dataloader=DataLoaderConfig(batch_size=64, num_workers=4, pin_memory=True),
+        model=ExampleCNNConfig(input_shape=(3, 28, 28), num_classes=10),
+        optimizer=OptimizerConfig(opt="fista", lr=0.01, weight_decay=1e-4, momentum=0.9),
+        scheduler=SchedulerConfig(sched="cosine", num_epochs=10, warmup_epochs=1, min_lr=1e-5, step_on_epochs=False),
+        trainer=TrainerConfig(max_epochs=10, log_every_n_steps=50),
+    ),
 )

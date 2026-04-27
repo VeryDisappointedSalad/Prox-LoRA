@@ -16,6 +16,7 @@ from lightning.pytorch.loggers import TensorBoardLogger
 
 from prox_lora.datasets.base_data_module import DataLoaderConfig
 from prox_lora.datasets.cifar import CIFAR10Config
+from prox_lora.datasets.diabetic_retinopathy import DRConfig
 from prox_lora.datasets.mnist import MNISTConfig
 from prox_lora.infrastructure.configs import deep_asdict, save_config, yaml
 from prox_lora.models.biomedclip import BiomedCLIPConfig
@@ -51,7 +52,7 @@ class TrainerConfig:
 @dataclass(frozen=True)
 class FullTrainConfig:
     name: str
-    datamodule: MNISTConfig | CIFAR10Config
+    datamodule: MNISTConfig | CIFAR10Config | DRConfig
     model: ExampleCNNConfig | BiomedCLIPConfig
     dataloader: DataLoaderConfig = DataLoaderConfig(batch_size=64, num_workers=4, pin_memory=True)
     optimizer: OptimizerConfig = field(

@@ -4,6 +4,7 @@
 checkpoints/
 data/mnist/
 data/cifar10/
+data/retinopathy
 
 __pycache__/
 .pyc_cache/
