@@ -1,3 +1,5 @@
+from typing import cast
+
 import PIL.Image
 import torch
 from open_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
@@ -57,3 +59,11 @@ def default_clip_transform(target_image_size: int = 224) -> v2.Transform:
     )
     # For training they use
     #   RandomResizedCrop(starget_image_size, scale=(0.9, 1.0), ratio=(0.75, 1.3333), interpolation=bicubic, antialias=True)
+
+
+def to_pil_image(
+    tensor: torch.Tensor, mean: tuple[float, float, float], std: tuple[float, float, float]
+) -> PIL.Image.Image:
+    """Undo normalization and convert a tensor image back to PIL format for displaying."""
+    tensor = v2.Normalize(mean=[-m / s for m, s in zip(mean, std, strict=True)], std=[1 / s for s in std])(tensor)
+    return cast(PIL.Image.Image, v2.ToPILImage()(tensor))

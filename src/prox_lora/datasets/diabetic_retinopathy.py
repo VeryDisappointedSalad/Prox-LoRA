@@ -1,20 +1,20 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import pandas as pd
 import torch
+from open_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import random_split
 from torchvision.transforms import v2
 
+from prox_lora.datasets.base_data_module import BaseDataModule, DataLoaderConfig
 from prox_lora.datasets.common import SizedDataset
 from prox_lora.infrastructure.configs import yaml
 from prox_lora.utils.io import PROJECT_ROOT
-
-from .base_data_module import BaseDataModule, DataLoaderConfig
 
 
 class KaggleDRDataset(SizedDataset[tuple[Tensor, int]]):
@@ -22,16 +22,24 @@ class KaggleDRDataset(SizedDataset[tuple[Tensor, int]]):
         self.img_dir = img_dir
         self.transform = transform
 
-        raw_df = pd.read_csv(csv_path)
-        self.df = raw_df[raw_df.apply(lambda x: (img_dir / f"{x.iloc[0]}.jpeg").exists(), axis=1)]
+        df = pd.read_csv(csv_path)
+
+        # Check that images and labels match.
+        img_names = {p.stem for p in img_dir.glob("*.jpeg")}
+        label_names = set(df["image"])
+        assert img_names == label_names, (
+            f"Image names and label names differ:\nOnly in labels:{label_names - img_names}\nOnly in images: {img_names - label_names}"
+        )
+
+        # Store pairs (image path, label), where label is a int (0..5).
+        self.data = [(img_dir / f"{row['image']}.jpeg", row["level"]) for _, row in df.iterrows()]
 
     def __len__(self) -> int:
-        return len(self.df)
+        return len(self.data)
 
     def __getitem__(self, idx: int) -> tuple[Tensor, int]:
-        img_id = self.df.iloc[idx, 0]
-        label = int(cast(int, self.df.iloc[idx, 1]))
-        image = Image.open(self.img_dir / f"{img_id}.jpeg").convert("RGB")
+        img_path, label = self.data[idx]
+        image = Image.open(img_path).convert("RGB")
         if self.transform is not None:
             return self.transform(image), label
         else:
@@ -39,17 +47,28 @@ class KaggleDRDataset(SizedDataset[tuple[Tensor, int]]):
 
 
 class DRDataModule(BaseDataModule[tuple[Tensor, int]]):
-    def __init__(self, dataloader: DataLoaderConfig | None = None, *, augmentations: bool = False) -> None:
+    def __init__(
+        self,
+        dataloader: DataLoaderConfig | None = None,
+        *,
+        size: Literal["original", 1024, 512, 256, 224] = 224,
+        augmentations: bool = False,
+    ) -> None:
         super().__init__(num_classes=5, dataloader=dataloader)
-        self.data_dir = PROJECT_ROOT / "data" / "retinopathy"
+        self.data_dir = PROJECT_ROOT / "data" / "retinopathy" / str(size)
 
-        # hardcoded 224x224?
+        if size == "original":
+            resize = []
+        else:
+            # Images in data_dir, are already rescaled, CenterCrop will actually add padding to make them square.
+            resize = [v2.CenterCrop((size, size))]
+
         standard_transform = v2.Compose(
             [
-                v2.Resize((224, 224)),
+                *resize,
                 v2.ToImage(),
                 v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(mean=[0.4814, 0.4578, 0.4082], std=[0.2686, 0.2613, 0.2757]),
+                v2.Normalize(mean=OPENAI_DATASET_MEAN, std=OPENAI_DATASET_STD),
             ]
         )
 
@@ -74,7 +93,7 @@ class DRDataModule(BaseDataModule[tuple[Tensor, int]]):
                 csv_path=self.data_dir / "trainLabels.csv",
                 transform=self.train_transforms,
             )
-            # again hardcoded 9/1 split
+            # Hardcoded 9:1 train:val split. Does not group left and right eye together.
             rng = torch.Generator().manual_seed(42)
             self.train_dataset, self.val_dataset = cast(
                 list[SizedDataset[tuple[Tensor, int]]], random_split(full_dataset, [0.9, 0.1], generator=rng)
@@ -83,7 +102,7 @@ class DRDataModule(BaseDataModule[tuple[Tensor, int]]):
         if stage == "test" or stage is None:
             self.test_dataset = KaggleDRDataset(
                 img_dir=self.data_dir / "test",
-                csv_path=self.data_dir / "testLabels.csv",  # i found some testlabels, I think they will work
+                csv_path=self.data_dir / "testLabels.csv",
                 transform=self.transform,
             )
 
@@ -93,6 +112,7 @@ class DRDataModule(BaseDataModule[tuple[Tensor, int]]):
 class DRConfig:
     name: str = "DR-Kaggle"
     augmentations: bool = True
+    size: Literal["original", 1024, 512, 256, 224] = 224
 
     def instantiate(self, dataloader: DataLoaderConfig | None = None) -> DRDataModule:
-        return DRDataModule(dataloader=dataloader, augmentations=self.augmentations)
+        return DRDataModule(dataloader=dataloader, augmentations=self.augmentations, size=self.size)
