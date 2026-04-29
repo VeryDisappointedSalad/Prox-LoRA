@@ -28,6 +28,7 @@ class KaggleDRDataset(SizedDataset[tuple[Tensor, int]]):
 
     See README.md for instructions on downloading and preprocessing.
     """
+
     def __init__(self, img_dir: Path, csv_path: Path, transform: Callable[[Image.Image], Tensor] | None = None) -> None:
         self.img_dir = img_dir
         self.transform = transform

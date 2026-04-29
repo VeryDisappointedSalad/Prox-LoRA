@@ -11,6 +11,7 @@ from lightning.pytorch.utilities.types import OptimizerLRSchedulerConfig
 from timm.optim import create_optimizer_v2
 from timm.scheduler import create_scheduler_v2
 from torch import Tensor
+from torchmetrics.classification import CohenKappa
 
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
@@ -33,7 +34,12 @@ class Classifier(LightningModule):
     """
 
     def __init__(
-        self, model: nn.Module, optimizer: OptimizerConfig, scheduler: SchedulerConfig, steps_in_epoch: int = 0
+        self,
+        model: nn.Module,
+        num_classes: int,
+        optimizer: OptimizerConfig,
+        scheduler: SchedulerConfig,
+        steps_in_epoch: int = 0,
     ) -> None:
         super().__init__()
         self.model = model
@@ -47,16 +53,29 @@ class Classifier(LightningModule):
         # Disable training_step wrapper that implicitly adds: zero_grad, backward, optimizer and scheduler step, gradient clipping, ...
         self.automatic_optimization = False
 
+        self.train_kappa = CohenKappa(task="multiclass", num_classes=num_classes, weights="quadratic")
+        self.val_kappa = CohenKappa(task="multiclass", num_classes=num_classes, weights="quadratic")
+        self.test_kappa = CohenKappa(task="multiclass", num_classes=num_classes, weights="quadratic")
+
     def compute_loss(self, batch: tuple[Tensor, Tensor], phase: Literal["train", "val", "test"]) -> Tensor:
         inputs, targets = batch
         batch_size = len(inputs)
 
         logits = self.model(inputs)
         loss = nn.functional.cross_entropy(logits, targets)
-        accuracy = (logits.argmax(dim=-1) == targets).float().mean()
+        predictions = logits.argmax(dim=-1)
+        accuracy = (predictions == targets).float().mean()
 
         self.log(f"_loss/{phase}", loss, prog_bar=True, batch_size=batch_size)
         self.log(f"_accuracy/{phase}", accuracy, prog_bar=True, batch_size=batch_size)
+
+        if phase == "train":
+            kappa = self.train_kappa(predictions, targets)
+            self.log(f"_kappa/{phase}", kappa, prog_bar=True, batch_size=batch_size)
+        elif phase == "val":
+            self.val_kappa.update(predictions, targets)
+        elif phase == "test":
+            self.test_kappa.update(predictions, targets)
 
         return loss
 
@@ -80,6 +99,15 @@ class Classifier(LightningModule):
 
     def on_train_epoch_end(self) -> None:
         self._step_scheduler("epoch")
+        self.train_kappa.reset()
+
+    def on_validation_epoch_end(self) -> None:
+        self.log("_kappa/val", cast(Tensor, self.val_kappa.compute()), prog_bar=True)
+        self.val_kappa.reset()
+
+    def on_test_epoch_end(self) -> None:
+        self.log("_kappa/test", cast(Tensor, self.test_kappa.compute()), prog_bar=True)
+        self.test_kappa.reset()
 
     def _step_scheduler(self, kind: Literal["batch", "epoch"]) -> None:
         lr_scheduler = cast(timm.scheduler.scheduler.Scheduler, self.lr_schedulers())
