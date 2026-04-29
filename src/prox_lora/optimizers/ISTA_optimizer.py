@@ -9,13 +9,13 @@ from torch.optim import Optimizer
 
 class ISTA(Optimizer):
     """
-    Coding:
-    to use in config: OptimizerConfig('opt' = 'ista', ...)
+    Usage: `OptimizerConfig(opt="ista", ...)`.
 
     Math:
-    solves min_theta Loss_function(theta) + lambda * L1_regularization(theta)
-    theta' = theta_t - lr *grad_theta Loss_function(theta)
-    theta_{t+1} = sgn(theta') * max(|abs(theta')|-prox_lambda * lr, 0)
+        solves min_θ ℒ(θ) + λ · L1_regularization(θ)
+
+        θ' = θₜ - lr · ∇_θₜ ℒ(θₜ)
+        θₜ₊₁ = sgn(θ') · max(|θ'| - prox_lambda · lr, 0)
     """
 
     def __init__(
@@ -34,7 +34,6 @@ class ISTA(Optimizer):
             raise ValueError(f"Invalid prox_lambda: {prox_lambda} < 0")
 
         defaults = dict(lr=lr, momentum=momentum, weight_decay=weight_decay, prox_lambda=prox_lambda)
-
         super().__init__(params, defaults)
 
     @overload

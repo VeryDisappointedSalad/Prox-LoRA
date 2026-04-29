@@ -5,8 +5,12 @@ from prox_lora.utils.io import PROJECT_ROOT
 
 
 def main() -> None:
-    config = get_config(FullTrainConfig, "cifar_example")
-    config = deep_replace(config, {"name": "cifar-aug3", "dataloader.pin_memory": False})
+    config = get_config(FullTrainConfig, "mnist_example_ISTA")
+    config = deep_replace(config, {
+        # "name": "mnist-april",
+        # "dataloader.pin_memory": False,
+        # "clearml": False
+    })
     run_training(config, checkpoint_dir=PROJECT_ROOT / "checkpoints")
 
 

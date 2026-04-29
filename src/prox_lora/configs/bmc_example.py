@@ -18,7 +18,7 @@ register_configs(
     ),
     FullTrainConfig(
         name="dr_bmc",
-        datamodule=DRConfig(augmentations=True),
+        datamodule=DRConfig(augmentations=True, size=224),
         dataloader=DataLoaderConfig(batch_size=64, num_workers=4, pin_memory=True),
         model=BiomedCLIPConfig(input_shape=(3, 224, 224), num_classes=5, unfrozen_groups=2, freeze_bn_stats=False),
         optimizer=OptimizerConfig(opt="adamw", lr=1e-5, weight_decay=1e-5, momentum=0.9),

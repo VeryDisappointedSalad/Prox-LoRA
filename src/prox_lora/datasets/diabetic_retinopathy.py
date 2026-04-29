@@ -18,6 +18,16 @@ from prox_lora.utils.io import PROJECT_ROOT
 
 
 class KaggleDRDataset(SizedDataset[tuple[Tensor, int]]):
+    """
+    Kaggle's Diabetic Retinopathy Detection dataset.
+
+    A classification dataset with (image, label) pairs.
+    Labels are 0/1/2/3/4/5 for No DR/Mild/Moderate/Severe/Proliferative DR.
+
+    https://www.kaggle.com/competitions/diabetic-retinopathy-detection/overview
+
+    See README.md for instructions on downloading and preprocessing.
+    """
     def __init__(self, img_dir: Path, csv_path: Path, transform: Callable[[Image.Image], Tensor] | None = None) -> None:
         self.img_dir = img_dir
         self.transform = transform
@@ -101,9 +111,7 @@ class DRDataModule(BaseDataModule[tuple[Tensor, int]]):
 
         if stage == "test" or stage is None:
             self.test_dataset = KaggleDRDataset(
-                img_dir=self.data_dir / "test",
-                csv_path=self.data_dir / "testLabels.csv",
-                transform=self.transform,
+                img_dir=self.data_dir / "test", csv_path=self.data_dir / "testLabels.csv", transform=self.transform
             )
 
 
