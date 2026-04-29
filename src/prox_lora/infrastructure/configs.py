@@ -152,6 +152,8 @@ def register_configs[T](*configs: T) -> None:
         name = config.name  # type: ignore[attr-defined]
         if type(config) not in _REGISTERED_CONFIGS:
             _REGISTERED_CONFIGS[type(config)] = {}
+        if name in _REGISTERED_CONFIGS[type(config)]:
+            raise ValueError(f"Config with name '{name}' already registered for type {type(config)}")
         _REGISTERED_CONFIGS[type(config)][name] = config
 
 

@@ -9,14 +9,13 @@ from torch.optim import Optimizer
 
 class ADMM(Optimizer):
     """
-    Coding:
-    to use in config: OptimizerConfig(opt="admm", lr=0.01, prox_lambda=0.1, rho=0.001)
+    Usage: `OptimizerConfig(opt="admm", lr=0.01, prox_lambda=0.1, rho=0.001)`.
 
     Math:
-    solves min_theta Loss_function(theta) + lambda * L1_regularization(z) for theta = z
+        solves min_θ ℒ(θ) + λ · L1_regularization(z)   subject to θ = z
 
-    Lagrangrian:
-    L_rho(theta, z, u) = Loss_function(theta) + lambda * L1_regularization(z) + (rho/2) * ||theta - z + u||_2^2
+    Lagrangian (?):
+        Lᵨ(θ, z, u) = ℒ(θ) + λ · L1_regularization(z) + (ρ/2) · ‖θ - z + u‖₂²
     """
 
     def __init__(

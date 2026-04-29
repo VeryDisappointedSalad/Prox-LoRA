@@ -7,18 +7,16 @@ from torch import nn
 from torch.optim import Optimizer
 
 
-# @default_registry.register
 class FISTA(Optimizer):
     """
-    Coding:
-    to use in config: OptimizerConfig(opt="fista", ...)
+    Usage: `OptimizerConfig(opt="fista", ...)`.
 
     Math:
-    solves min_theta Loss_function(theta) + lambda * L1_regularization(theta)
+        solves min_θ ℒ(θ) + λ · L1_regularization(θ)
 
-    y_{t+1} = prox(x_t - lr * grad)
-    y_{t+1} = sgn(x_t) * max(|abs(x_t)|-prox_lambda * lr, 0)
-    x_{t+1} = y_{t+1} + ((t-1)/(t+2)) * (y_{t+1} - y_t)
+        θ' = θₜ - lr · ∇_θₜ ℒ(θₜ)
+        yₜ₊₁ = sgn(θ') · max(|θ'| - prox_lambda · lr, 0)
+        θₜ₊₁ = yₜ₊₁  +  (yₜ₊₁ - yₜ) · (t-1) / (t+2)
     """
 
     def __init__(

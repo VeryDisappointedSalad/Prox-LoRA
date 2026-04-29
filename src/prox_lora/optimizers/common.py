@@ -62,6 +62,12 @@ class OptimizerConfig(TypedDict, total=False):
     fallback_no_weight_decay: bool
     """If True, params in no_weight_decay() list will use fallback optimizer; default is False."""
 
+    prox_lambda: float
+    """Lambda parameter for proximal optimizers like ISTA and ADMM."""
+
+    rho: float
+    """Rho parameter for ADMM optimizer."""
+
 
 @yaml.register_class
 @dataclass(frozen=True)
