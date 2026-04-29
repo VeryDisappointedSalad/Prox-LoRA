@@ -10,6 +10,7 @@ dependencies = [
     "clearml>=2.1.3",
     "einops",
     "huggingface-hub",
+    "foolbox>=3.3.4",
     "ipykernel",
     "ipywidgets",
     "jupyter>=1.1",

@@ -17,3 +17,5 @@ __pypackages__/
 .vscode/
 
 zibaldone.md
+/logs
+*.ckpt

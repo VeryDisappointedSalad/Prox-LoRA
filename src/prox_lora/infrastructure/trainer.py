@@ -78,8 +78,13 @@ def run_training(
     datamodule.setup()
     steps_in_epoch = len(datamodule.train_dataloader())
     model = config.model.instantiate()
+    num_classes = config.model.num_classes
     classifier = Classifier(
-        model=model, optimizer=config.optimizer, scheduler=config.scheduler, steps_in_epoch=steps_in_epoch
+        model=model,
+        num_classes=num_classes,
+        optimizer=config.optimizer,
+        scheduler=config.scheduler,
+        steps_in_epoch=steps_in_epoch,
     )
 
     task: clearml.Task | None = None
@@ -100,6 +105,7 @@ def run_training(
                 monitor=metric_for_checkpointing,
                 save_top_k=1,
                 verbose=False,
+                save_last="link",
             ),
             RichProgressBar(leave=True, console_kwargs=dict(force_terminal=True, force_interactive=True, width=250)),
             RichModelSummary(max_depth=model_summary_depth),
