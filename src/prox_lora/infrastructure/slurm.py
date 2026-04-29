@@ -35,6 +35,9 @@ def submit_slurm_job(
 
     if not follow:
         print(f"To follow logs:\n    tail -f {log_path}\nTo cancel (kill) job:\n    scancel {job_id}")
+        print(
+            f"To check job status:\n  squeue -j {job_id} --Format=jobid:10,username:20,name:40,partition:8,submittime,timeleft:16,state:10,reason:20,nodelist,tres-alloc:60"
+        )
         print(f"To run something within the same allocation:\n    srun --jobid={job_id} --overlap --pty /bin/bash -i")
         return
 
@@ -88,6 +91,7 @@ def make_sbatch_script(slurm_config: SlurmConfig, job_name: str, log_path: Path,
     script = "#!/bin/bash\n"
     for arg in sbatch_args:
         script += f"#SBATCH {arg}\n"
-    script += "\nset -euxo pipefail\nexport PYTHONUNBUFFERED=1\n\n"
+    script += "\nset -euxo pipefail\nexport PYTHONUNBUFFERED=1\n"
+    script += 'echo "Running on node: $(hostname)"\n\n'
     script += job_cmd + "\n"
     return script
