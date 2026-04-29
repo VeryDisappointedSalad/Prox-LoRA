@@ -22,7 +22,7 @@ class KaggleDRDataset(SizedDataset[tuple[Tensor, int]]):
     Kaggle's Diabetic Retinopathy Detection dataset.
 
     A classification dataset with (image, label) pairs.
-    Labels are 0/1/2/3/4/5 for No DR/Mild/Moderate/Severe/Proliferative DR.
+    Labels are 0/1/2/3/4 for No DR/Mild/Moderate/Severe/Proliferative DR.
 
     https://www.kaggle.com/competitions/diabetic-retinopathy-detection/overview
 
