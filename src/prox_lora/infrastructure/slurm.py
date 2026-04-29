@@ -88,6 +88,6 @@ def make_sbatch_script(slurm_config: SlurmConfig, job_name: str, log_path: Path,
     script = "#!/bin/bash\n"
     for arg in sbatch_args:
         script += f"#SBATCH {arg}\n"
-    script += "\nset -euxo pipefail\n\n"
+    script += "\nset -euxo pipefail\nexport PYTHONUNBUFFERED=1\n\n"
     script += job_cmd + "\n"
     return script
