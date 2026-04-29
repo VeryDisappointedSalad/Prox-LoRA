@@ -30,7 +30,6 @@ class CLI:
     def run(self) -> None:
         self.before_main()
         self.main()
-        self.after_main()
 
     def before_main(self) -> None:
         dotenv.load_dotenv()
@@ -39,9 +38,6 @@ class CLI:
         _silence_spurious_warnings()
         if not self.skip_torch:
             _setup_torch()
-
-    def after_main(self) -> None:
-        print("Finished.")
 
 
 def seed_everything(seed: int, *, skip_torch: bool = False) -> None:

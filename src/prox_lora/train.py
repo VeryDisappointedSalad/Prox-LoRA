@@ -10,7 +10,8 @@ from prox_lora.infrastructure.slurm import SlurmConfig, submit_slurm_job
 from prox_lora.infrastructure.trainer import FullTrainConfig, get_new_run_dir, run_training
 from prox_lora.utils.io import PROJECT_ROOT
 
-DEFAULT_SLURM_CONFIG = SlurmConfig(duration="00:10:00", partition="common", mem="2G", cpus=2, gpus=1)
+DEFAULT_SLURM_CONFIG = SlurmConfig(duration="00:10:00", partition="common", gpus=1)
+
 
 def main() -> None:
     tyro.extras.subcommand_cli_from_dict(
@@ -53,6 +54,7 @@ def start_training(config: str, /, replace: dict[str, bool | int | float | str] 
     run_dir = get_new_run_dir(PROJECT_ROOT / "runs" / cfg.name)
     save_config(cfg, run_dir / "config.yaml")
     run_training(cfg, run_dir=run_dir, resume=False)
+    print("Training finished.")
 
 
 def resume_training(run_dir: Path, /) -> None:
@@ -60,11 +62,18 @@ def resume_training(run_dir: Path, /) -> None:
     if not (run_dir / "config.yaml").exists():
         raise ValueError(f"Run directory {run_dir} should contain config.yaml.")
     cfg: FullTrainConfig = load_config(run_dir / "config.yaml")
-    run_training(cfg, run_dir=run_dir.absolute(), resume=True)
+    resume = (run_dir / "checkpoints").exists()
+    run_training(cfg, run_dir=run_dir.absolute(), resume=resume)
+    print("Training finished.")
 
 
 def submit_training(
-    config: str, /, replace: dict[str, bool | int | float | str] | None = None, slurm: SlurmConfig = DEFAULT_SLURM_CONFIG
+    config: str,
+    /,
+    replace: dict[str, bool | int | float | str] | None = None,
+    slurm: SlurmConfig = DEFAULT_SLURM_CONFIG,
+    *,
+    follow: bool = False,
 ) -> None:
     """Submit a new training job via SLURM."""
     cfg = get_config(FullTrainConfig, config)
@@ -72,22 +81,26 @@ def submit_training(
 
     run_dir = get_new_run_dir(PROJECT_ROOT / "runs" / cfg.name)
     save_config(cfg, run_dir / "config.yaml")
-    save_config(slurm, run_dir / "slurm_config.yaml")
 
     submit_slurm_job(
         slurm,
         job_name=cfg.name + "/" + run_dir.name,
-        log_path=run_dir / "log.txt",
+        run_dir=run_dir,
         job_args=["uv", "run", PROJECT_ROOT / "src" / "prox_lora" / "train.py", "resume", run_dir],
+        follow=follow,
     )
 
 
-def submit_resume_training(run_dir: Path, /, slurm: SlurmConfig = DEFAULT_SLURM_CONFIG) -> None:
+def submit_resume_training(
+    run_dir: Path, /, slurm: SlurmConfig = DEFAULT_SLURM_CONFIG, *, follow: bool = False
+) -> None:
+    """Submit a SLURM job to resume some training."""
     submit_slurm_job(
         slurm,
         job_name=run_dir.parent.name + "/" + run_dir.name,
-        log_path=run_dir / "log.txt",
+        run_dir=run_dir,
         job_args=["uv", "run", PROJECT_ROOT / "src" / "prox_lora" / "train.py", "resume", run_dir],
+        follow=follow,
     )
 
 

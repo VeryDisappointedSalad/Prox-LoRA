@@ -1,4 +1,5 @@
 import pprint
+import subprocess
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -138,9 +139,17 @@ def run_training(
     finally:
         if task is not None:
             print("Flushing ClearML, this may take a while...")
+            # Force kill after 60s in case flush hangs.
+            proc = subprocess.Popen(
+                "sleep 60 && echo 'Hang on ClearML flush, killing...' && kill -2 $PPID "
+                + " && sleep 5 && kill -7 $PPID && sleep 5 && kill -9 $PPID",
+                shell=True,
+            )
             task.flush(wait_for_uploads=True)
             print("Flushed.")
-            # task.close()
+            proc.kill()  # Cancel the backup killer.
+    # if task is not None:
+    #     task.close()
 
 
 def get_new_run_dir(d: Path) -> Path:
