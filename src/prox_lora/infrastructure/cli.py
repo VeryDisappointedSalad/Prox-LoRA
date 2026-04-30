@@ -23,40 +23,39 @@ class CLI:
     - skip_torch: if True, don't import and initialize torch and Lightning (which takes a few seconds).
     """
 
-    def __init__(self, main: Callable[[], None], seed: int, *, skip_torch: bool = False) -> None:
+    def __init__(self, main: Callable[[], None], *, skip_torch: bool = False) -> None:
         self.main = main
-        self.seed = seed
         self.skip_torch = skip_torch
 
     def run(self) -> None:
         self.before_main()
         self.main()
-        self.after_main()
 
     def before_main(self) -> None:
         dotenv.load_dotenv()
 
         _setup_sigusr_handlers()
         _silence_spurious_warnings()
-
-        # Seed like `lightning.fabric.utilities.seed.seed_everything`, without importing it.
-        os.environ["PL_GLOBAL_SEED"] = str(self.seed)
-        os.environ["PL_SEED_WORKERS"] = "1"
-        random.seed(self.seed)
-        np.random.seed(self.seed)  # noqa: NPY002
-
         if not self.skip_torch:
-            _setup_torch(self.seed)
-
-    def after_main(self) -> None:
-        print("Finished.")
+            _setup_torch()
 
 
-def _setup_torch(seed: int) -> None:
+def seed_everything(seed: int, *, skip_torch: bool = False) -> None:
+    """Seed like `lightning.fabric.utilities.seed.seed_everything`, without importing it."""
+    os.environ["PL_GLOBAL_SEED"] = str(seed)
+    os.environ["PL_SEED_WORKERS"] = "1"
+    random.seed(seed)
+    np.random.seed(seed)  # noqa: NPY002
+
+    if not skip_torch:
+        import torch  # noqa: PLC0415
+
+        torch.manual_seed(seed)
+
+
+def _setup_torch() -> None:
     """Setup torch compute precision options (and some printing options too)."""
     import torch  # noqa: PLC0415
-
-    torch.manual_seed(seed)
 
     torch.set_printoptions(precision=2, threshold=6, edgeitems=3, linewidth=200)  # type: ignore[no-untyped-call]
 

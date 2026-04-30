@@ -1,4 +1,5 @@
 import pprint
+import subprocess
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -18,12 +19,12 @@ from prox_lora.datasets.base_data_module import DataLoaderConfig
 from prox_lora.datasets.cifar import CIFAR10Config
 from prox_lora.datasets.diabetic_retinopathy import DRConfig
 from prox_lora.datasets.mnist import MNISTConfig
-from prox_lora.infrastructure.configs import deep_asdict, save_config, yaml
+from prox_lora.infrastructure.cli import seed_everything
+from prox_lora.infrastructure.configs import deep_asdict, yaml
 from prox_lora.models.biomedclip import BiomedCLIPConfig
 from prox_lora.models.classifier import Classifier
 from prox_lora.models.example_cnn import ExampleCNNConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
-from prox_lora.utils.io import PROJECT_ROOT
 
 
 @yaml.register_class
@@ -60,18 +61,35 @@ class FullTrainConfig:
     )
     scheduler: SchedulerConfig = SchedulerConfig(sched="none")
     trainer: TrainerConfig = TrainerConfig()
-    resume: bool = False
-    clearml: bool = True
+    clearml_project: str | None = "Prox-LoRA"
+    seed: int = 1
 
 
 def run_training(
     config: FullTrainConfig,
+    run_dir: Path,
     model_summary_depth: int = 3,
     metric_for_checkpointing: str = "_loss/val",
-    checkpoint_dir: Path = PROJECT_ROOT / "checkpoints",
     checkpoint_filename_pattern: str = "epoch={epoch:0>3}",
+    *,
+    resume: bool = False,
 ) -> None:
+    """
+    Run training, saving checkpoints and logs under `run_dir`.
+
+    Args:
+    - config: the FullTrainConfig.
+    - run_dir: must be of the form ".../{config.name}/r{number}/".
+    """
+    all_runs_dir = run_dir.parent.parent
+    assert config.name == run_dir.parent.name, f"{config.name=} ≠ {run_dir.parent.name=}"
+    version = run_dir.name
+    assert version.startswith("r"), f"Unexpected {version=}"
+
+    print(f"Training ({resume=}) in run_dir: {run_dir}")
     pprint.pp(config, indent=4, width=200, depth=4, compact=True)
+
+    seed_everything(config.seed)
 
     datamodule = config.datamodule.instantiate(dataloader=config.dataloader)
     datamodule.prepare_data()
@@ -88,14 +106,16 @@ def run_training(
     )
 
     task: clearml.Task | None = None
-    if config.clearml:
-        task = clearml.Task.init(project_name="Prox-LoRA", task_name=config.name)
+    if config.clearml_project is not None:
+        task = clearml.Task.init(
+            project_name=config.clearml_project, task_name=config.name + "/" + version, continue_last_task=resume
+        )
         task.set_parameters_as_dict(deep_asdict(config))
 
     trainer = L.Trainer(
-        default_root_dir=checkpoint_dir / config.name,
+        default_root_dir=all_runs_dir / config.name,
         **asdict(config.trainer),
-        logger=TensorBoardLogger(save_dir=checkpoint_dir, name=config.name, default_hp_metric=False),
+        logger=TensorBoardLogger(save_dir=all_runs_dir, name=config.name, version=version, default_hp_metric=False),
         callbacks=[
             DeviceStatsMonitor(cpu_stats=False),
             LearningRateMonitor(logging_interval="step"),
@@ -105,28 +125,47 @@ def run_training(
                 monitor=metric_for_checkpointing,
                 save_top_k=1,
                 verbose=False,
-                save_last="link",
             ),
+            # Note that using save_last=True or "link" above would only copy or link the last top_k checkpoint.
+            ModelCheckpoint(filename="last", auto_insert_metric_name=False, verbose=False),
             RichProgressBar(leave=True, console_kwargs=dict(force_terminal=True, force_interactive=True, width=250)),
             RichModelSummary(max_depth=model_summary_depth),
         ],
         enable_model_summary=False,  # Disable default model summary in favor of RichModelSummary.
     )
 
-    if trainer.logger:
-        assert trainer.logger.log_dir is not None
-        version_dir = Path(trainer.logger.log_dir)
-        version_dir.mkdir(parents=True, exist_ok=True)
-        save_config(config, version_dir / "config.yaml")
-
     try:
-        if config.resume:
-            trainer.fit(classifier, datamodule, ckpt_path="last")
-        else:
-            trainer.fit(classifier, datamodule)
+        trainer.fit(classifier, datamodule, ckpt_path="last" if resume else None)
     finally:
         if task is not None:
             print("Flushing ClearML, this may take a while...")
+            # Force kill after 60s in case flush hangs.
+            proc = subprocess.Popen(
+                "sleep 60 && echo 'Hang on ClearML flush, killing...' && kill -2 $PPID "
+                + " && sleep 5 && kill -7 $PPID && sleep 5 && kill -9 $PPID",
+                shell=True,
+            )
             task.flush(wait_for_uploads=True)
             print("Flushed.")
-            # task.close()
+            proc.kill()  # Cancel the backup killer.
+    # if task is not None:
+    #     task.close()
+
+
+def get_new_run_dir(d: Path) -> Path:
+    """Create a new run directory under `d`, like "r0" or "r1", with an auto-incremented version number."""
+    d.mkdir(parents=True, exist_ok=True)
+    versions = []
+    for p in d.iterdir():
+        if p.name.startswith("r"):
+            try:
+                versions.append(int(p.name[1:]))
+            except ValueError:  # Ignore directories that don't follow the "r{number}" pattern.
+                pass
+    next = max(versions, default=0) + 1
+    run_dir = d / f"r{next}"
+    try:
+        run_dir.mkdir()
+    except FileExistsError:
+        raise ValueError(f"Run directory {run_dir} already exists (race condition?)") from None
+    return run_dir

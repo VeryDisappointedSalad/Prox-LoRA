@@ -43,7 +43,9 @@ wget 'https://storage.googleapis.com/kaggle-forum-message-attachments/90528/2877
 
 ## Commands
 (You might need to add `--extra cpu` after `uv run` to avoid downloading CUDA).
-* Training: `uv run src/prox_lora/train.py`
+* Training: `uv run src/prox_lora/train.py --help`
+* For example, to submit a small training job to SLURM:
+    `uv run src/prox_lora/train.py submit mnist_example --replace trainer.max_epochs 1 --follow`
 
 
 ## Development
