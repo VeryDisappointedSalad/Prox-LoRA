@@ -68,6 +68,9 @@ class OptimizerConfig(TypedDict, total=False):
     rho: float
     """Rho parameter for ADMM optimizer."""
 
+    betas: tuple
+    """beta_1, beta_2 params for ProxAdam"""
+
 
 @yaml.register_class
 @dataclass(frozen=True)
