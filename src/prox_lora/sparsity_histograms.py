@@ -113,11 +113,13 @@ def main(output_dir: str = "plots/histograms") -> None:
     runs_root = PROJECT_ROOT / "runs"
 
     model_directories = {
-        "Standard SGD": runs_root / "convnet_dr_SGD",
-        "AdamW": runs_root / "convnet_dr_AdamW",
-        "Standard SAM": runs_root / "convnet_dr_SAM",
-        "ProxSAM GD": runs_root / "convnet_dr_proxsam_gd",
-        "ProxSAM AdamW": runs_root / "convnet_dr_proxsam_adamw",
+        "AdamW_head": runs_root / "biomedclip_dr_AdamW_head_only",
+        # "SGD_head": runs_root / "biomedclip_dr_SGD_head_only",
+        "AdamW_entire": runs_root / "biomedclip_dr_AdamW_entire_model",
+        # "SGD_entire": runs_root / "biomedclip_dr_SGD_entire_model",
+        "ConvNetAdamW": runs_root / "convnet_dr_AdamW",
+        "ProxSamAdaptive_entire": runs_root / "biomedclip_dr_proxsam_adaptive_entire",
+        "ProxSamAdaptive_head": runs_root / "biomedclip_dr_proxsam_adaptive_head",
     }
 
     checkpoints = {}

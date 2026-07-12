@@ -119,9 +119,12 @@ def main(
 
     model_directories = {
         "AdamW_head": runs_root / "biomedclip_dr_AdamW_head_only",
-        "SGD_head": runs_root / "biomedclip_dr_SGD_head_only",
+        # "SGD_head": runs_root / "biomedclip_dr_SGD_head_only",
         "AdamW_entire": runs_root / "biomedclip_dr_AdamW_entire_model",
-        "SGD_entire": runs_root / "biomedclip_dr_SGD_entire_model",
+        # "SGD_entire": runs_root / "biomedclip_dr_SGD_entire_model",
+        "ConvNetAdamW": runs_root / "convnet_dr_AdamW",
+        "ProxSamAdaptive_entire": runs_root / "biomedclip_dr_proxsam_adaptive_entire",
+        "ProxSamAdaptive_head": runs_root / "biomedclip_dr_proxsam_adaptive_head",
     }
 
     checkpoints = {}
@@ -129,7 +132,8 @@ def main(
         latest_ckpt = find_latest_checkpoint(dir_path)
         if latest_ckpt:
             checkpoints[name] = latest_ckpt
-            print(f"Found latest checkpoint for {name}: {latest_ckpt.relative_to(PROJECT_ROOT)}")
+            # I really like this emoji
+            print(f"🔎 Found latest checkpoint for {name}: {latest_ckpt.relative_to(PROJECT_ROOT)}")
         else:
             print(f"No checkpoint found in: {dir_path.relative_to(PROJECT_ROOT) if dir_path.exists() else dir_path}")
 

@@ -20,6 +20,8 @@ class SlurmConfig:
     # asusgpu1, asusgpu2, ...
     nodelist: str | None = None
 
+    exclude: str | None = None
+
 
 def submit_slurm_job(
     slurm_config: SlurmConfig, job_name: str, run_dir: Path, job_args: list[str | Path], *, follow: bool = True
@@ -91,8 +93,12 @@ def make_sbatch_script(slurm_config: SlurmConfig, job_name: str, log_path: Path,
     if slurm_config.mail is not None:
         sbatch_args += ["--mail-user", slurm_config.mail, "--mail-type=ALL"]
 
+    # to add or remove some nodes, it our pytorch case I need to remove all 1080ti's --exclude=asusgpu3,asusgpu4,asusgpu5,steven
     if slurm_config.nodelist is not None:
         sbatch_args += [f"--nodelist={slurm_config.nodelist}"]
+
+    if slurm_config.exclude is not None:
+        sbatch_args += [f"--exclude={slurm_config.exclude}"]
 
     script = "#!/bin/bash\n"
     for arg in sbatch_args:

@@ -10,7 +10,9 @@ from prox_lora.infrastructure.slurm import SlurmConfig, submit_slurm_job
 from prox_lora.infrastructure.trainer import FullTrainConfig, get_new_run_dir, run_training
 from prox_lora.utils.io import PROJECT_ROOT
 
-DEFAULT_SLURM_CONFIG = SlurmConfig(duration="00:10:00", partition="common", gpus=1)
+DEFAULT_SLURM_CONFIG = SlurmConfig(
+    duration="05:00:00", partition="common", gpus=1, exclude="asusgpu3,asusgpu4,asusgpu5,steven"
+) # excluding these GPUs, since they fail for current PyTorch installation
 
 
 def main() -> None:

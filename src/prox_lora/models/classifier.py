@@ -41,13 +41,14 @@ class Classifier(LightningModule):
         scheduler: SchedulerConfig,
         steps_in_epoch: int = 0,
         # for cross entropy loss derived from train_labels.csv as frequencies per class
-        class_weights: Tensor | None = torch.tensor(
-            # raw weights
-            # [0.27218907, 2.8756447, 1.32751323, 8.04719359, 9.92259887],
-            # squared weights
-            [0.52171743, 1.6957726, 1.1521776, 2.83675758, 3.15001569],
-            dtype=torch.float32,
-        ),
+        # set to None when using WeightedSampler
+        class_weights: Tensor | None = None,
+        # = torch.tensor(
+        # raw weights
+        # [0.27218907, 2.8756447, 1.32751323, 8.04719359, 9.92259887],
+        # squared weights
+        # [0.52171743, 1.6957726, 1.1521776, 2.83675758, 3.15001569],
+        # dtype=torch.float32,),
     ) -> None:
         super().__init__()
         self.model = model
@@ -93,6 +94,15 @@ class Classifier(LightningModule):
         return loss
 
     def training_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> None:
+
+        # just to check WeightedSampler's correctness
+        if batch_idx < 20:
+            inputs, targets = batch
+            counts = torch.bincount(targets, minlength=5).tolist()
+            print(
+                f"\n[classifier.py - DEBUG] Epoch {self.current_epoch} batch {batch_idx} | Batch class distribution: {counts}\n"
+            )
+
         optimizer = cast(torch.optim.Optimizer, self.optimizers())
 
         optimizer.zero_grad()
@@ -106,15 +116,16 @@ class Classifier(LightningModule):
         )
         if opt_name in ["proxsam", "proxsamadw", "proxsamadaptive"]:
 
-            def closure():
+            def sam_closure():
                 optimizer.zero_grad()
-                inputs, targets = batch
-                logits = self.model(inputs)
-                adv_loss = nn.functional.cross_entropy(logits, targets, weight=self.class_weights)
+                with torch.autocast(device_type=self.device.type, dtype=torch.float16):
+                    inputs, targets = batch
+                    logits = self.model(inputs)
+                    adv_loss = nn.functional.cross_entropy(logits, targets, weight=self.class_weights)
                 adv_loss.backward()
                 return adv_loss
 
-            optimizer.step(closure)
+            optimizer.step(sam_closure=sam_closure)
         else:
             optimizer.step()
 

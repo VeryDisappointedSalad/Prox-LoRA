@@ -29,7 +29,10 @@ class KaggleConvNetConfig:
 
 
 class KaggleConvNet(nn.Module):
-    """VGG-style ConvNet form Kaggle competitions? The whale and retinopathy one."""
+    """VGG-style ConvNet form Kaggle competitions? The whale and retinopathy one.
+    https://www.kaggle.com/competitions/diabetic-retinopathy-detection/writeups/o-o-team-o-o-solution-summary
+    https://deepsense.ai/blog/diagnosing-diabetic-retinopathy-with-deep-learning/
+    """
 
     def __init__(self, config: KaggleConvNetConfig) -> None:
         super().__init__()

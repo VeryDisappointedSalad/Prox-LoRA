@@ -23,7 +23,10 @@ class ProxSAMAdaptive(Optimizer):
         super().__init__(params, defaults)
 
     @torch.no_grad()
-    def step(self, closure):
+    def step(self, closure=None, sam_closure=None):
+
+        # ProxSamAdaptive needs to overwrite closure very explicitely
+        closure = closure if closure is not None else sam_closure
         if closure is None:
             raise ValueError("ProxSAMAdaptive requires a closure to calculate gradients at perturbed points.")
 

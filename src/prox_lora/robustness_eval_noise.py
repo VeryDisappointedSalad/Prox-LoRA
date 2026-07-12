@@ -167,12 +167,13 @@ def main(
     runs_root = PROJECT_ROOT / "runs"
 
     model_directories = {
-        "AdamW": runs_root / "convnet_dr_AdamW",
-        "ProxSAM AdamW": runs_root / "convnet_dr_proxsam_adamw",
-        "SAM AdamW": runs_root / "convnet_dr_sam_adamw",
-        "ProxSAM GD": runs_root / "convnet_dr_proxsam_gd",
-        "Standard SAM": runs_root / "convnet_dr_SAM",
-        "Standard SGD": runs_root / "convnet_dr_SGD",
+        "AdamW_head": runs_root / "biomedclip_dr_AdamW_head_only",
+        # "SGD_head": runs_root / "biomedclip_dr_SGD_head_only",
+        "AdamW_entire": runs_root / "biomedclip_dr_AdamW_entire_model",
+        # "SGD_entire": runs_root / "biomedclip_dr_SGD_entire_model",
+        "ConvNetAdamW": runs_root / "convnet_dr_AdamW",
+        "ProxSamAdaptive_entire": runs_root / "biomedclip_dr_proxsam_adaptive_entire",
+        "ProxSamAdaptive_head": runs_root / "biomedclip_dr_proxsam_adaptive_head",
     }
 
     checkpoints = {}

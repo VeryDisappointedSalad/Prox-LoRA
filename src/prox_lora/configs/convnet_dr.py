@@ -5,16 +5,35 @@ from prox_lora.infrastructure.trainer import FullTrainConfig, TrainerConfig
 from prox_lora.models.ConvNet import KaggleConvNetConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
+# I guess no need for EPOCHS_HEAD and EPOCHS_ENTIRE, we are training the entire thing anyway
 EPOCHS = 50
+
+# size of the image passed - can only be in [224, 512, 1024]
+SIZE = 512
+
+# precision for TrainerConfig. By default it's precision: _PRECISION_INPUT_STR = "32-true"
+PRECISION = "16-mixed"
+
+# batchsize 32 fails for entire model at 512x512, but works for head only tuning
+BATCH_SIZE = 16
+
+# weighted sampling suggested by Marcin
+"""
+[c0, ..., c4] is class distribution Counter, c0 - healthy, ..., c4 - proliferative retinopathy
+with sampling [4, 2, 5, 0, 5], [6, 3, 4, 1, 2], [8, 1, 2, 3, 2] etc.
+without sampling  [13, 1, 2, 0, 0], [12, 2, 2, 0, 0], [13, 0, 3, 0, 0] etc.
+"""
+USE_WEIGHTED_SAMPLING = True
+
 
 baseline = FullTrainConfig(
     name="conv_net_dr",
-    datamodule=DRConfig(augmentations=True, size=224),
-    dataloader=DataLoaderConfig(batch_size=64, num_workers=4, pin_memory=True),
-    model=KaggleConvNetConfig(input_shape=(3, 224, 224), channels=(32, 64, 128, 256), num_classes=5),
+    datamodule=DRConfig(augmentations=True, size=SIZE, weighed_sampler=USE_WEIGHTED_SAMPLING),
+    dataloader=DataLoaderConfig(batch_size=BATCH_SIZE, num_workers=4, pin_memory=True),
+    model=KaggleConvNetConfig(input_shape=(3, SIZE, SIZE), channels=(32, 64, 128, 256), num_classes=5),
     optimizer=OptimizerConfig(opt="sgd", lr=1e-3, weight_decay=1e-4, momentum=0.9),
-    scheduler=SchedulerConfig(sched="cosine", num_epochs=EPOCHS, warmup_epochs=2, min_lr=1e-6, step_on_epochs=False),
-    trainer=TrainerConfig(max_epochs=EPOCHS, log_every_n_steps=500),
+    scheduler=SchedulerConfig(sched="cosine", num_epochs=EPOCHS, warmup_epochs=1, min_lr=1e-6, step_on_epochs=False),
+    trainer=TrainerConfig(max_epochs=EPOCHS, log_every_n_steps=100),
 )
 
 register_configs(
