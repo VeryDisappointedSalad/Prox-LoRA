@@ -33,6 +33,7 @@ def save_config(config: Any, path: Path) -> None:
 
 
 def load_config(path: Path) -> Any:
+    _import_all_configs()
     return yaml.load(Path(path))
 
 

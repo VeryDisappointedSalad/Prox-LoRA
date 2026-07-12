@@ -40,6 +40,14 @@ class Classifier(LightningModule):
         optimizer: OptimizerConfig,
         scheduler: SchedulerConfig,
         steps_in_epoch: int = 0,
+        # for cross entropy loss derived from train_labels.csv as frequencies per class
+        class_weights: Tensor | None = torch.tensor(
+            # raw weights
+            # [0.27218907, 2.8756447, 1.32751323, 8.04719359, 9.92259887],
+            # squared weights
+            [0.52171743, 1.6957726, 1.1521776, 2.83675758, 3.15001569],
+            dtype=torch.float32,
+        ),
     ) -> None:
         super().__init__()
         self.model = model
@@ -57,12 +65,17 @@ class Classifier(LightningModule):
         self.val_kappa = CohenKappa(task="multiclass", num_classes=num_classes, weights="quadratic")
         self.test_kappa = CohenKappa(task="multiclass", num_classes=num_classes, weights="quadratic")
 
+        if class_weights is not None:
+            self.register_buffer("class_weights", class_weights)
+        else:
+            self.class_weights = None
+
     def compute_loss(self, batch: tuple[Tensor, Tensor], phase: Literal["train", "val", "test"]) -> Tensor:
         inputs, targets = batch
         batch_size = len(inputs)
 
         logits = self.model(inputs)
-        loss = nn.functional.cross_entropy(logits, targets)
+        loss = nn.functional.cross_entropy(logits, targets, weight=self.class_weights)
         predictions = logits.argmax(dim=-1)
         accuracy = (predictions == targets).float().mean()
 
@@ -88,7 +101,23 @@ class Classifier(LightningModule):
 
         self.manual_backward(loss)
 
-        optimizer.step()
+        opt_name = (
+            self.optimizer_config["opt"] if isinstance(self.optimizer_config, dict) else self.optimizer_config.opt
+        )
+        if opt_name in ["proxsam", "proxsamadw", "proxsamadaptive"]:
+
+            def closure():
+                optimizer.zero_grad()
+                inputs, targets = batch
+                logits = self.model(inputs)
+                adv_loss = nn.functional.cross_entropy(logits, targets, weight=self.class_weights)
+                adv_loss.backward()
+                return adv_loss
+
+            optimizer.step(closure)
+        else:
+            optimizer.step()
+
         self._step_scheduler("batch")
 
     def validation_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> None:
