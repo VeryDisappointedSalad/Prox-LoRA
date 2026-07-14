@@ -68,7 +68,7 @@ class OptimizerConfig(TypedDict, total=False):
     rho: float
     """Rho parameter for ADMM optimizer."""
 
-    betas: tuple
+    betas: tuple[float, float]
     """beta_1, beta_2 params for ProxAdam"""
 
 

@@ -31,6 +31,9 @@ class Classifier(LightningModule):
             min_lr=0, warmup_lr=1e-05, warmup_epochs=0.
         See: https://huggingface.co/docs/timm/reference/schedulers#timm.scheduler.create_scheduler_v2
     - steps_in_epoch: Number of batches in an epoch, used to convert scheduler args from epochs to steps if needed.
+    - loss_class_weights: If True, use class weights in the cross-entropy loss, computed as 1/freq for each class.
+        If "sqrt", use 1/√freq instead. If False, no class weights are used.
+    - class_frequencies: List of frequencies for each class, only used with `loss_class_weights`.
     """
 
     def __init__(
@@ -40,15 +43,9 @@ class Classifier(LightningModule):
         optimizer: OptimizerConfig,
         scheduler: SchedulerConfig,
         steps_in_epoch: int = 0,
-        # for cross entropy loss derived from train_labels.csv as frequencies per class
-        # set to None when using WeightedSampler
-        class_weights: Tensor | None = None,
-        # = torch.tensor(
-        # raw weights
-        # [0.27218907, 2.8756447, 1.32751323, 8.04719359, 9.92259887],
-        # squared weights
-        # [0.52171743, 1.6957726, 1.1521776, 2.83675758, 3.15001569],
-        # dtype=torch.float32,),
+        *,
+        loss_class_weights: bool | Literal["sqrt"] = False,
+        class_frequencies: list[float] | None = None,
     ) -> None:
         super().__init__()
         self.model = model
@@ -66,8 +63,16 @@ class Classifier(LightningModule):
         self.val_kappa = CohenKappa(task="multiclass", num_classes=num_classes, weights="quadratic")
         self.test_kappa = CohenKappa(task="multiclass", num_classes=num_classes, weights="quadratic")
 
-        if class_weights is not None:
-            self.register_buffer("class_weights", class_weights)
+        self.class_weights: Tensor | None
+        if loss_class_weights:
+            assert class_frequencies is not None, "class_frequencies must be provided if class_weights is not None"
+            if loss_class_weights is True:
+                class_weights = [1.0 / freq for freq in class_frequencies]
+            elif loss_class_weights == "sqrt":
+                class_weights = [1.0 / (freq**0.5) for freq in class_frequencies]
+            else:
+                raise ValueError(f"Unknown class_weights value: {loss_class_weights}")
+            self.register_buffer("class_weights", torch.tensor(class_weights))
         else:
             self.class_weights = None
 
@@ -94,15 +99,6 @@ class Classifier(LightningModule):
         return loss
 
     def training_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> None:
-
-        # just to check WeightedSampler's correctness
-        if batch_idx < 20:
-            inputs, targets = batch
-            counts = torch.bincount(targets, minlength=5).tolist()
-            print(
-                f"\n[classifier.py - DEBUG] Epoch {self.current_epoch} batch {batch_idx} | Batch class distribution: {counts}\n"
-            )
-
         optimizer = cast(torch.optim.Optimizer, self.optimizers())
 
         optimizer.zero_grad()
@@ -116,7 +112,7 @@ class Classifier(LightningModule):
         )
         if opt_name in ["proxsam", "proxsamadw", "proxsamadaptive"]:
 
-            def sam_closure():
+            def sam_closure() -> Tensor:
                 optimizer.zero_grad()
                 with torch.autocast(device_type=self.device.type, dtype=torch.float16):
                     inputs, targets = batch

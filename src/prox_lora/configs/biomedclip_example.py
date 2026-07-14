@@ -5,7 +5,6 @@ from prox_lora.infrastructure.trainer import FullTrainConfig, TrainerConfig
 from prox_lora.models.biomedclip import BiomedCLIPConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
-
 # epochs per architecture
 EPOCHS_HEAD = 25
 EPOCHS_ENTIRE = 10
@@ -29,7 +28,7 @@ USE_WEIGHTED_SAMPLING = True
 
 baseline = FullTrainConfig(
     name="biomedclip_example",
-    datamodule=DRConfig(augmentations=True, size=SIZE, weighed_sampler=USE_WEIGHTED_SAMPLING),
+    datamodule=DRConfig(augmentations=True, size=SIZE, weighted_sampler=USE_WEIGHTED_SAMPLING),
     dataloader=DataLoaderConfig(batch_size=BATCH_SIZE, num_workers=4, pin_memory=True),
     # unfrozen_groups=14 cały model, unfrozen_groups=0 tylko głowa
     model=BiomedCLIPConfig(

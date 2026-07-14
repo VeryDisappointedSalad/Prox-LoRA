@@ -17,10 +17,8 @@ class SlurmConfig:
     gpus: int = 1
     mail: str | None = None
 
-    # asusgpu1, asusgpu2, ...
-    nodelist: str | None = None
-
-    exclude: str | None = None
+    nodelist: str | None = None  # Comma-separated list of nodes to allow, like "asusgpu1,asusgpu2"
+    exclude: str | None = None  # Comma-separated list of nodes to exclude, like "asusgpu3,asusgpu4,asusgpu5,steven"
 
 
 def submit_slurm_job(
@@ -93,7 +91,6 @@ def make_sbatch_script(slurm_config: SlurmConfig, job_name: str, log_path: Path,
     if slurm_config.mail is not None:
         sbatch_args += ["--mail-user", slurm_config.mail, "--mail-type=ALL"]
 
-    # to add or remove some nodes, it our pytorch case I need to remove all 1080ti's --exclude=asusgpu3,asusgpu4,asusgpu5,steven
     if slurm_config.nodelist is not None:
         sbatch_args += [f"--nodelist={slurm_config.nodelist}"]
 
@@ -106,6 +103,5 @@ def make_sbatch_script(slurm_config: SlurmConfig, job_name: str, log_path: Path,
     script += "\nset -euxo pipefail\nexport PYTHONUNBUFFERED=1\n"
     script += 'echo "Running on node: $(hostname)"\n\n'
 
-    # script += job_cmd + "\n"
     script += "srun " + job_cmd + "\n"
     return script

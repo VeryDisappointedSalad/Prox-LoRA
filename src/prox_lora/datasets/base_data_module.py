@@ -60,3 +60,11 @@ class BaseDataModule[T](L.LightningDataModule):
 
     def test_dataloader(self) -> torch.utils.data.DataLoader[T]:
         return torch.utils.data.DataLoader(self.test_dataset, **asdict(self.dataloader))
+
+    def get_class_frequencies(self) -> list[float]:
+        """
+        Return the frequency of each label in the training set (they sum to 1).
+
+        May only be called after setup('fit') has been called.
+        """
+        raise NotImplementedError()

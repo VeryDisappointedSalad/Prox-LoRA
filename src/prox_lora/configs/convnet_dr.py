@@ -28,7 +28,7 @@ USE_WEIGHTED_SAMPLING = True
 
 baseline = FullTrainConfig(
     name="conv_net_dr",
-    datamodule=DRConfig(augmentations=True, size=SIZE, weighed_sampler=USE_WEIGHTED_SAMPLING),
+    datamodule=DRConfig(augmentations=True, size=SIZE, weighted_sampler=USE_WEIGHTED_SAMPLING),
     dataloader=DataLoaderConfig(batch_size=BATCH_SIZE, num_workers=4, pin_memory=True),
     model=KaggleConvNetConfig(input_shape=(3, SIZE, SIZE), channels=(32, 64, 128, 256), num_classes=5),
     optimizer=OptimizerConfig(opt="sgd", lr=1e-3, weight_decay=1e-4, momentum=0.9),

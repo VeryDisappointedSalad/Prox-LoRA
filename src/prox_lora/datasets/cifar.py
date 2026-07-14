@@ -62,6 +62,10 @@ class CIFAR10DataModule(BaseDataModule[tuple[Tensor, int]]):
         if stage == "test" or stage is None:
             self.test_dataset = cast(CIFARDataset, CIFAR10(self.data_dir, train=False, transform=self.transform))
 
+    def get_class_frequencies(self) -> list[float]:
+        NUM_CLASSES = 10
+        return [1 / NUM_CLASSES] * NUM_CLASSES
+
 
 @yaml.register_class
 @dataclass(frozen=True)

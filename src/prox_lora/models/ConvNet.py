@@ -29,16 +29,18 @@ class KaggleConvNetConfig:
 
 
 class KaggleConvNet(nn.Module):
-    """VGG-style ConvNet form Kaggle competitions? The whale and retinopathy one.
-    https://www.kaggle.com/competitions/diabetic-retinopathy-detection/writeups/o-o-team-o-o-solution-summary
-    https://deepsense.ai/blog/diagnosing-diabetic-retinopathy-with-deep-learning/
+    """
+    VGG-style ConvNet, similar to that from two Kaggle solutions.
+
+    - https://www.kaggle.com/competitions/diabetic-retinopathy-detection/writeups/o-o-team-o-o-solution-summary
+    - https://deepsense.ai/blog/diagnosing-diabetic-retinopathy-with-deep-learning/
     """
 
     def __init__(self, config: KaggleConvNetConfig) -> None:
         super().__init__()
         self.config = config
 
-        C, H, W = self.config.input_shape
+        C, _H, _W = self.config.input_shape
         channels = self.config.channels
 
         features = []
@@ -65,7 +67,10 @@ class KaggleConvNet(nn.Module):
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
 
         self.classifier = nn.Sequential(
-            nn.Flatten(), nn.Dropout(p=self.config.dropout_rate), nn.Linear(in_channels, self.config.num_classes)
+            nn.Flatten(),
+            nn.Dropout(p=self.config.dropout_rate),
+            # nn.Linear(in_channels, in_channels), TODO
+            nn.Linear(in_channels, self.config.num_classes),
         )
 
     def forward(self, x: Tensor) -> Tensor:

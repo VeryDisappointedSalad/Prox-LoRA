@@ -2,6 +2,7 @@ import pprint
 import subprocess
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Literal
 
 import clearml
 import lightning as L
@@ -23,6 +24,7 @@ from prox_lora.infrastructure.cli import seed_everything
 from prox_lora.infrastructure.configs import deep_asdict, yaml
 from prox_lora.models.biomedclip import BiomedCLIPConfig
 from prox_lora.models.classifier import Classifier
+from prox_lora.models.ConvNet import KaggleConvNetConfig
 from prox_lora.models.example_cnn import ExampleCNNConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
@@ -54,8 +56,9 @@ class TrainerConfig:
 class FullTrainConfig:
     name: str
     datamodule: MNISTConfig | CIFAR10Config | DRConfig
-    model: ExampleCNNConfig | BiomedCLIPConfig
+    model: ExampleCNNConfig | KaggleConvNetConfig | BiomedCLIPConfig
     dataloader: DataLoaderConfig = DataLoaderConfig(batch_size=64, num_workers=4, pin_memory=True)
+    loss_class_weights: bool | Literal["sqrt"] = False  # Weights in CE loss: 1/freq if True, 1/√freq if "sqrt".
     optimizer: OptimizerConfig = field(
         default_factory=lambda: OptimizerConfig(opt="adamw", lr=0.01, weight_decay=1e-4, momentum=0.9)
     )
@@ -94,15 +97,19 @@ def run_training(
     datamodule = config.datamodule.instantiate(dataloader=config.dataloader)
     datamodule.prepare_data()
     datamodule.setup()
+    class_frequencies = datamodule.get_class_frequencies()
     steps_in_epoch = len(datamodule.train_dataloader())
     model = config.model.instantiate()
     num_classes = config.model.num_classes
+    assert num_classes == len(class_frequencies), f"{num_classes=} ≠ {len(class_frequencies)}"
     classifier = Classifier(
         model=model,
         num_classes=num_classes,
         optimizer=config.optimizer,
         scheduler=config.scheduler,
         steps_in_epoch=steps_in_epoch,
+        loss_class_weights=config.loss_class_weights,
+        class_frequencies=class_frequencies,
     )
 
     task: clearml.Task | None = None

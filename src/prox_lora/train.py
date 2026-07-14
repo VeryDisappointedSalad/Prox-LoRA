@@ -12,7 +12,7 @@ from prox_lora.utils.io import PROJECT_ROOT
 
 DEFAULT_SLURM_CONFIG = SlurmConfig(
     duration="05:00:00", partition="common", gpus=1, exclude="asusgpu3,asusgpu4,asusgpu5,steven"
-) # excluding these GPUs, since they fail for current PyTorch installation
+) # Excluding nodes with 1080ti GPUs, since they fail with our PyTorch version.
 
 
 def main() -> None:
