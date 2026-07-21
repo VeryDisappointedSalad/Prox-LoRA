@@ -3,6 +3,7 @@ from prox_lora.datasets.cifar import CIFAR10Config
 from prox_lora.infrastructure.configs import deep_replace, register_configs
 from prox_lora.infrastructure.trainer import FullTrainConfig, TrainerConfig
 from prox_lora.models.example_cnn import ExampleCNNConfig
+from prox_lora.models.timm import TimmConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
 baseline = FullTrainConfig(

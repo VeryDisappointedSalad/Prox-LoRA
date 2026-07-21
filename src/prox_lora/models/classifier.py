@@ -121,7 +121,7 @@ class Classifier(LightningModule):
                 adv_loss.backward()
                 return adv_loss
 
-            optimizer.step(sam_closure=sam_closure)
+            optimizer.step(closure=sam_closure)
         else:
             optimizer.step()
 

@@ -23,12 +23,14 @@ class CIFAR10DataModule(BaseDataModule[tuple[Tensor, int]]):
     Yields (image, label) pairs, where image is a 3x32x32 normalized tensor and label is an int in 0..9.
     """
 
-    def __init__(self, dataloader: DataLoaderConfig | None = None, *, augmentations: bool = False) -> None:
+    def __init__(
+        self, dataloader: DataLoaderConfig | None = None, *, target_image_size: int = 32, augmentations: bool = False
+    ) -> None:
         super().__init__(num_classes=10, dataloader=dataloader)
         self.image_shape = (3, 32, 32)
         self.data_dir = PROJECT_ROOT / "data" / "cifar10"
 
-        self.transform = default_transform(target_image_size=32)
+        self.transform = default_transform(target_image_size=target_image_size)
         self.train_transforms = (
             self.transform
             if not augmentations
@@ -71,7 +73,10 @@ class CIFAR10DataModule(BaseDataModule[tuple[Tensor, int]]):
 @dataclass(frozen=True)
 class CIFAR10Config:
     name: str = "CIFAR10"
+    target_image_size: int = 32
     augmentations: bool = False
 
     def instantiate(self, dataloader: DataLoaderConfig | None = None) -> CIFAR10DataModule:
-        return CIFAR10DataModule(dataloader=dataloader, augmentations=self.augmentations)
+        return CIFAR10DataModule(
+            dataloader=dataloader, target_image_size=self.target_image_size, augmentations=self.augmentations
+        )

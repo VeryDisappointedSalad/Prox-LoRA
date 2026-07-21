@@ -26,6 +26,7 @@ from prox_lora.models.biomedclip import BiomedCLIPConfig
 from prox_lora.models.classifier import Classifier
 from prox_lora.models.ConvNet import KaggleConvNetConfig
 from prox_lora.models.example_cnn import ExampleCNNConfig
+from prox_lora.models.timm import TimmConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
 
@@ -56,7 +57,7 @@ class TrainerConfig:
 class FullTrainConfig:
     name: str
     datamodule: MNISTConfig | CIFAR10Config | DRConfig
-    model: ExampleCNNConfig | KaggleConvNetConfig | BiomedCLIPConfig
+    model: ExampleCNNConfig | TimmConfig | KaggleConvNetConfig | BiomedCLIPConfig
     dataloader: DataLoaderConfig = DataLoaderConfig(batch_size=64, num_workers=4, pin_memory=True)
     loss_class_weights: bool | Literal["sqrt"] = False  # Weights in CE loss: 1/freq if True, 1/√freq if "sqrt".
     optimizer: OptimizerConfig = field(
@@ -141,8 +142,10 @@ def run_training(
         enable_model_summary=False,  # Disable default model summary in favor of RichModelSummary.
     )
 
+    success = False
     try:
         trainer.fit(classifier, datamodule, ckpt_path="last" if resume else None)
+        success = True
     finally:
         if task is not None:
             print("Flushing ClearML, this may take a while...")
@@ -155,8 +158,8 @@ def run_training(
             task.flush(wait_for_uploads=True)
             print("Flushed.")
             proc.kill()  # Cancel the backup killer.
-    # if task is not None:
-    #     task.close()
+            if success:
+                task.close()
 
 
 def get_new_run_dir(d: Path) -> Path:
