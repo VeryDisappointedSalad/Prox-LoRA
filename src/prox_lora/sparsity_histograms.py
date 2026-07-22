@@ -66,14 +66,14 @@ def plot_and_save_histogram(weights: np.ndarray, model_name: str, output_dir: Pa
     ax1.set_title("Standard Histogram (Linear Scale)", fontsize=14)
     ax1.set_xlabel("Weight Value", fontsize=12)
     ax1.set_ylabel("Frequency (Count)", fontsize=12)
-    ax1.grid(True, linestyle="--", alpha=0.6)
+    ax1.grid(visible=True, linestyle="--", alpha=0.6)
 
     ax2.hist(weights, bins=150, color="#ff7f0e", alpha=0.7, edgecolor="black", linewidth=0.5)
     ax2.set_yscale("log")
     ax2.set_title("Standard Histogram (Log Scale)", fontsize=14)
     ax2.set_xlabel("Weight Value", fontsize=12)
     ax2.set_ylabel("Frequency (Log Scale)", fontsize=12)
-    ax2.grid(True, linestyle="--", alpha=0.6)
+    ax2.grid(visible=True, linestyle="--", alpha=0.6)
 
     stats_text = (
         f"Total Weights: {total_params:,}\n"

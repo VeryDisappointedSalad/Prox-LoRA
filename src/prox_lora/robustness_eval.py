@@ -68,10 +68,10 @@ def run_adversarial_eval(
     mean_t = torch.tensor(mean).view(3, 1, 1).to(actual_device)
     std_t = torch.tensor(std).view(3, 1, 1).to(actual_device)
 
-    total_batches = min(len(test_loader), (target_count + test_batch_size - 1) // test_batch_size)
+    _total_batches = min(len(test_loader), (target_count + test_batch_size - 1) // test_batch_size)
 
     with tqdm(total=target_count, desc="Evaluating Images") as pbar:
-        for batch_idx, (images, labels) in enumerate(test_loader):
+        for _batch_idx, (images, labels) in enumerate(test_loader):
             images, labels = images.to(actual_device), labels.to(actual_device)
 
             unnormalized = (images * std_t + mean_t).clamp(0, 1)
@@ -100,7 +100,7 @@ def run_adversarial_eval(
     return epsilons, robust_accuracy.tolist()
 
 
-def plot_robustness_curves(results_dict: dict, output_dir: Path):
+def plot_robustness_curves(results_dict: dict, output_dir: Path) -> None:
     output_dir.mkdir(exist_ok=True, parents=True)
     plt.figure(figsize=(10, 6))
 
@@ -110,7 +110,7 @@ def plot_robustness_curves(results_dict: dict, output_dir: Path):
     plt.title(r"Robustness Curve: Accuracy vs. Adversarial Noise ($\epsilon$)")
     plt.xlabel(r"Perturbation Magnitude ($\epsilon$)")
     plt.ylabel("Accuracy")
-    plt.grid(True, linestyle="--")
+    plt.grid(visible=True, linestyle="--")
     plt.legend()
 
     plot_path = output_dir / "robustness_curve.png"

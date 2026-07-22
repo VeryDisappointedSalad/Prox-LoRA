@@ -66,7 +66,7 @@ class Classifier(LightningModule):
         self.class_weights: Tensor | None
         if loss_class_weights_gamma != 0.0:
             assert class_frequencies is not None, "class_frequencies must be provided if class_weights is not None"
-            class_weights = [freq ** loss_class_weights_gamma for freq in class_frequencies]
+            class_weights = [freq**loss_class_weights_gamma for freq in class_frequencies]
             class_weights = [w / sum(class_weights) for w in class_weights]  # Normalize to sum to 1
             self.register_buffer("class_weights", torch.tensor(class_weights))
         else:

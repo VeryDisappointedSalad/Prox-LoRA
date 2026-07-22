@@ -66,7 +66,7 @@ def run_noise_eval(
 
     with torch.no_grad():
         with tqdm(total=target_count, desc="Evaluating Images") as pbar:
-            for batch_idx, (images, labels) in enumerate(test_loader):
+            for _batch_idx, (images, labels) in enumerate(test_loader):
                 images, labels = images.to(actual_device), labels.to(actual_device)
 
                 unnormalized = (images * std_t + mean_t).clamp(0, 1)
@@ -127,7 +127,7 @@ def plot_robustness_curves(results_dict: dict, output_dir: Path):
         plt.title(rf"Robustness Curve: {metric_name.replace('_', ' ')} vs. Gaussian Noise ($\sigma$)")
         plt.xlabel(r"Noise Standard Deviation ($\sigma$)")
         plt.ylabel(metric_name.replace("_", " "))
-        plt.grid(True, linestyle="--")
+        plt.grid(visible=True, linestyle="--")
         plt.legend(loc="lower left" if metric_name != "Accuracy" else "upper right")
         plt.tight_layout()
 
