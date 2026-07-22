@@ -110,10 +110,10 @@ class Classifier(LightningModule):
 
             def sam_closure() -> Tensor:
                 optimizer.zero_grad()
-                with torch.autocast(device_type=self.device.type, dtype=torch.float16):
-                    inputs, targets = batch
-                    logits = self.model(inputs)
-                    adv_loss = nn.functional.cross_entropy(logits, targets, weight=self.class_weights)
+                # with torch.autocast(device_type=self.device.type, dtype=torch.float16):
+                inputs, targets = batch
+                logits = self.model(inputs)
+                adv_loss = nn.functional.cross_entropy(logits, targets, weight=self.class_weights)
                 adv_loss.backward()
                 return adv_loss
 
