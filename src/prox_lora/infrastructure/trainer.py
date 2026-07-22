@@ -142,7 +142,7 @@ def run_training(
         **asdict(config.trainer),
         logger=loggers,
         callbacks=[
-            DeviceStatsMonitor(cpu_stats=False),
+            # DeviceStatsMonitor(cpu_stats=False),
             LearningRateMonitor(logging_interval="step"),
             ModelCheckpoint(
                 filename=checkpoint_filename_pattern,

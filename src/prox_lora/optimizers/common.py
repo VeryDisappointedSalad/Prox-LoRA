@@ -92,7 +92,7 @@ class SchedulerConfig:
     patience_epochs: int = 10
     decay_rate: float = 0.1
     min_lr: float = 0
-    warmup_lr: float = 1e-5
+    warmup_lr: float = 0  # timm's default is 1e-5, which is often non-sense, zero is a sensible default.
     warmup_epochs: int = 0
     warmup_prefix: bool = False
 
