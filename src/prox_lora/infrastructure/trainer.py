@@ -2,10 +2,10 @@ import pprint
 import subprocess
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Literal
 
 import clearml
 import lightning as L
+import wandb.sdk.wandb_run
 from lightning.fabric.plugins.precision.precision import _PRECISION_INPUT_STR
 from lightning.pytorch.callbacks import (
     DeviceStatsMonitor,
@@ -14,7 +14,7 @@ from lightning.pytorch.callbacks import (
     RichModelSummary,
     RichProgressBar,
 )
-from lightning.pytorch.loggers import TensorBoardLogger
+from lightning.pytorch.loggers import Logger, TensorBoardLogger, WandbLogger
 
 from prox_lora.datasets.base_data_module import DataLoaderConfig
 from prox_lora.datasets.cifar import CIFAR10Config
@@ -65,7 +65,8 @@ class FullTrainConfig:
     )
     scheduler: SchedulerConfig = SchedulerConfig(sched="none")
     trainer: TrainerConfig = TrainerConfig()
-    clearml_project: str | None = "Prox-LoRA"
+    clearml_project: str | None = None  # was "Prox-LoRA"
+    wandb_project: str | None = "test"
     seed: int = 1
 
 
@@ -120,10 +121,26 @@ def run_training(
         )
         task.set_parameters_as_dict(deep_asdict(config))
 
+    wandb_run: wandb.sdk.wandb_run.Run | None = None
+    if config.wandb_project is not None:
+        wandb_run = wandb.init(
+            entity="Prox-LoRA",
+            project=config.wandb_project,
+            name=config.name + "/" + version,
+            config=deep_asdict(config),
+            dir=all_runs_dir,
+            resume="allow" if resume else None,
+        )
+
+    loggers = list[Logger]()
+    loggers.append(TensorBoardLogger(save_dir=all_runs_dir, name=config.name, version=version, default_hp_metric=False))
+    if wandb_run is not None:
+        loggers.append(WandbLogger(experiment=wandb_run))
+
     trainer = L.Trainer(
         default_root_dir=all_runs_dir / config.name,
         **asdict(config.trainer),
-        logger=TensorBoardLogger(save_dir=all_runs_dir, name=config.name, version=version, default_hp_metric=False),
+        logger=loggers,
         callbacks=[
             DeviceStatsMonitor(cpu_stats=False),
             LearningRateMonitor(logging_interval="step"),
@@ -160,6 +177,12 @@ def run_training(
             proc.kill()  # Cancel the backup killer.
             if success:
                 task.close()
+        if wandb_run is not None:
+            print("Flushing W&B...")
+            wandb_run.finish(exit_code=0 if success else 1)
+            print("Flushed W&B.")
+            wandb.teardown()
+            print("Finished W&B.")
 
 
 def get_new_run_dir(d: Path) -> Path:

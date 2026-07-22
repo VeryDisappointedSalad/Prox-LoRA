@@ -10,6 +10,9 @@
     * `uv sync --extra cpu`
     * `uv sync --extra cu128` (if using GPUs compatible with CUDA 12.8)
 * `cp .env.template .env` and edit `.env`:
+  * `WANDB_API_KEY`:
+    [create new API key](https://wandb.ai/settings) and copy value shown (only) during creation.
+    Check with `UV_ENV_FILE=.env uv run wandb login --verify` . It should show the right 'user_name (Prox-LoRA)', not an error.
   * `CLEARML_API_ACCESS_KEY` and `CLEARML_API_SECRET_KEY`:
     [create new credentials](https://app.clear.ml/settings/workspace-configuration) for the right workspace
     and copy values shown (only) during creation.

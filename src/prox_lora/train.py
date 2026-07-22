@@ -38,7 +38,7 @@ def example() -> None:
     )
 
 
-def start_training(config: str, /, replace: dict[str, bool | int | float | str] | None = None) -> None:
+def start_training(config: str, /, replace: dict[str, bool | int | float | str | None] | None = None) -> None:
     """
     Run a new training.
 

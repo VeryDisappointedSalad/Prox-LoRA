@@ -7,6 +7,7 @@ from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
 v2_baseline = FullTrainConfig(
     name="v2_baseline",
+    wandb_project="biomedclip_dr",
     datamodule=DRConfig(augmentations=True, size=512, weighted_sampler=False),
     dataloader=DataLoaderConfig(batch_size=32, num_workers=16, pin_memory=True),
     # unfrozen_groups=14 cały model, unfrozen_groups=0 tylko głowa
