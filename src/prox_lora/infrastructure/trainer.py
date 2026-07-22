@@ -59,7 +59,7 @@ class FullTrainConfig:
     datamodule: MNISTConfig | CIFAR10Config | DRConfig
     model: ExampleCNNConfig | TimmConfig | KaggleConvNetConfig | BiomedCLIPConfig
     dataloader: DataLoaderConfig = DataLoaderConfig(batch_size=64, num_workers=4, pin_memory=True)
-    loss_class_weights: bool | Literal["sqrt"] = False  # Weights in CE loss: 1/freq if True, 1/√freq if "sqrt".
+    loss_class_weights_gamma: float = 0.0  # Weights in CE loss to counter class imbalance: class frequency^gamma.
     optimizer: OptimizerConfig = field(
         default_factory=lambda: OptimizerConfig(opt="adamw", lr=0.01, weight_decay=1e-4, momentum=0.9)
     )
@@ -109,7 +109,7 @@ def run_training(
         optimizer=config.optimizer,
         scheduler=config.scheduler,
         steps_in_epoch=steps_in_epoch,
-        loss_class_weights=config.loss_class_weights,
+        loss_class_weights_gamma=config.loss_class_weights_gamma,
         class_frequencies=class_frequencies,
     )
 
