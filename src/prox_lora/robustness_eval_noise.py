@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import tyro
 from open_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
-from torchmetrics.classification import Accuracy, CohenKappa, F1Score
+from torchmetrics.classification import MulticlassAccuracy, MulticlassCohenKappa, MulticlassF1Score
 from tqdm import tqdm
 
 from prox_lora.datasets.base_data_module import DataLoaderConfig
@@ -52,11 +52,9 @@ def run_noise_eval(
 
     metrics_per_sigma = {
         sigma: {
-            "Accuracy": Accuracy(task="multiclass", num_classes=num_classes).to(actual_device),
-            "Quadratic_Kappa": CohenKappa(task="multiclass", num_classes=num_classes, weights="quadratic").to(
-                actual_device
-            ),
-            "F1_Macro": F1Score(task="multiclass", num_classes=num_classes, average="macro").to(actual_device),
+            "Accuracy": MulticlassAccuracy(num_classes=num_classes).to(actual_device),
+            "Quadratic_Kappa": MulticlassCohenKappa(num_classes=num_classes, weights="quadratic").to(actual_device),
+            "F1_Macro": MulticlassF1Score(num_classes=num_classes, average="macro").to(actual_device),
         }
         for sigma in noise_sigmas
     }
@@ -98,7 +96,7 @@ def run_noise_eval(
 
     print(f"\nEvaluated {current_count} images successfully.")
 
-    model_history = {"Accuracy": [], "Quadratic_Kappa": [], "F1_Macro": []}
+    model_history: dict[str, list[float]] = {"Accuracy": [], "Quadratic_Kappa": [], "F1_Macro": []}
     for sigma in noise_sigmas:
         model_history["Accuracy"].append(round(float(metrics_per_sigma[sigma]["Accuracy"].compute().item()), 4))
         model_history["Quadratic_Kappa"].append(
@@ -112,7 +110,7 @@ def run_noise_eval(
     return noise_sigmas, model_history
 
 
-def plot_robustness_curves(results_dict: dict, output_dir: Path):
+def plot_robustness_curves(results_dict: dict[str, dict[str, list[float]]], output_dir: Path) -> None:
     output_dir.mkdir(exist_ok=True, parents=True)
     metrics_to_plot = ["Accuracy", "Quadratic_Kappa", "F1_Macro"]
 
@@ -137,7 +135,7 @@ def plot_robustness_curves(results_dict: dict, output_dir: Path):
         print(f"Generated plot: {plot_path}")
 
 
-def save_results_json(results_dict: dict, output_dir: Path):
+def save_results_json(results_dict: dict[str, dict[str, list[float]]], output_dir: Path) -> None:
     json_path = output_dir / "robustness_noise_results.json"
     with open(json_path, "w") as f:
         json.dump(results_dict, f, indent=4)
@@ -183,7 +181,7 @@ def main(
             checkpoints[name] = latest_ckpt
             print(f"🔎 Found checkpoint for {name}: {latest_ckpt.relative_to(PROJECT_ROOT)}")
 
-    all_results = {}
+    all_results = dict[str, dict[str, list[float]]]()
     json_path = out_path / "robustness_noise_results.json"
     if json_path.exists():
         try:

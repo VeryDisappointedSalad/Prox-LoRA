@@ -1,7 +1,13 @@
+from collections.abc import Callable
+from typing import Any, cast, overload
+
 import torch
 import torch.nn.functional as F
 from timm.optim._optim_factory import OptimInfo, default_registry
 from torch.optim import Optimizer
+from torch.optim.optimizer import ParamsT
+
+from prox_lora.optimizers.common import FloatScalar
 
 
 class ProxSAM(Optimizer):
@@ -21,8 +27,16 @@ class ProxSAM(Optimizer):
     """
 
     def __init__(
-        self, params, lr=1e-3, rho=0.05, prox_lambda=0.01, weight_decay=0.0, momentum=0.0, eps=1e-12, **kwargs
-    ):
+        self,
+        params: ParamsT,
+        lr: float = 1e-3,
+        rho: float = 0.05,
+        prox_lambda: float = 0.01,
+        weight_decay: float = 0.0,
+        momentum: float = 0.0,
+        eps: float = 1e-12,
+        **kwargs: Any,
+    ) -> None:
         if lr < 0:
             raise ValueError(f"Invalid learning rate: {lr}")
         if rho < 0:
@@ -33,8 +47,14 @@ class ProxSAM(Optimizer):
         defaults = dict(lr=lr, rho=rho, prox_lambda=prox_lambda, weight_decay=weight_decay, momentum=momentum, eps=eps)
         super().__init__(params, defaults)
 
+    @overload
+    def step(self, closure: None = None) -> None: ...
+
+    @overload
+    def step(self, closure: Callable[[], FloatScalar]) -> FloatScalar: ...
+
     @torch.no_grad()
-    def step(self, closure):
+    def step(self, closure: Callable[[], FloatScalar] | None = None) -> FloatScalar | None:
         if closure is None:
             raise ValueError("Prox-SAM requires a closure to calculate gradients at perturbed points.")
 
@@ -105,7 +125,7 @@ class ProxSAM(Optimizer):
         return loss
 
     @torch.no_grad()
-    def _grad_norm(self):
+    def _grad_norm(self) -> torch.Tensor:
 
         shared_device = self.param_groups[0]["params"][0].device
         norms = [
@@ -116,7 +136,7 @@ class ProxSAM(Optimizer):
         ]
         if not norms:
             return torch.tensor(0.0, device=shared_device)
-        return torch.norm(torch.stack(norms), p=2)
+        return cast(torch.Tensor, torch.linalg.vector_norm(torch.stack(norms), p=2))
 
 
 # Register Prox-SAM optimizer

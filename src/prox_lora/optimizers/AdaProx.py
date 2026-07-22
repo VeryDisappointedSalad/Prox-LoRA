@@ -1,9 +1,15 @@
 """https://arxiv.org/pdf/1910.10094"""
 
+from collections.abc import Callable
+from typing import Any, overload
+
 import torch
 import torch.nn.functional as F
 from timm.optim._optim_factory import OptimInfo, default_registry
 from torch.optim import Optimizer
+from torch.optim.optimizer import ParamsT
+
+from prox_lora.optimizers.common import FloatScalar
 
 
 class AdaProx(Optimizer):
@@ -26,16 +32,16 @@ class AdaProx(Optimizer):
 
     def __init__(
         self,
-        params,
-        lr=1e-3,
-        betas=(0.9, 0.999),
-        eps=1e-8,
-        weight_decay=0,
-        prox_lambda=0.01,
-        max_sub_iters=5,
-        sub_eps=1e-4,
-        **kwargs,
-    ):
+        params: ParamsT,
+        lr: float = 1e-3,
+        betas: tuple[float, float] = (0.9, 0.999),
+        eps: float = 1e-8,
+        weight_decay: float = 0,
+        prox_lambda: float = 0.01,
+        max_sub_iters: int = 5,
+        sub_eps: float = 1e-4,
+        **kwargs: Any,
+    ) -> None:
 
         if lr < 0:
             raise ValueError(f"Invalid learning rate: {lr}")
@@ -57,8 +63,14 @@ class AdaProx(Optimizer):
         )
         super().__init__(params, defaults)
 
+    @overload
+    def step(self, closure: None = None) -> None: ...
+
+    @overload
+    def step(self, closure: Callable[[], FloatScalar]) -> FloatScalar: ...
+
     @torch.no_grad()
-    def step(self, closure=None):
+    def step(self, closure: Callable[[], FloatScalar] | None = None) -> FloatScalar | None:
         loss = None
         if closure is not None:
             with torch.enable_grad():

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -6,6 +7,7 @@ import torch
 import tyro
 
 from prox_lora.infrastructure.configs import load_config
+from prox_lora.infrastructure.trainer import FullTrainConfig
 from prox_lora.models.classifier import Classifier
 from prox_lora.utils.io import PROJECT_ROOT
 
@@ -22,7 +24,7 @@ def find_latest_checkpoint(base_run_dir: Path) -> Path | None:
     return checkpoints[0]
 
 
-def extract_weights(checkpoint_path: str, config, device="cuda") -> np.ndarray:
+def extract_weights(checkpoint_path: str, config: FullTrainConfig, device: str = "cuda") -> np.ndarray:
     actual_device = device if torch.cuda.is_available() else "cpu"
 
     model_instance = config.model.instantiate()
@@ -47,7 +49,7 @@ def extract_weights(checkpoint_path: str, config, device="cuda") -> np.ndarray:
     return np.concatenate(weights)
 
 
-def plot_and_save_histogram(weights: np.ndarray, model_name: str, output_dir: Path):
+def plot_and_save_histogram(weights: np.ndarray, model_name: str, output_dir: Path) -> None:
 
     total_params = len(weights)
     exact_zeros = np.sum(weights == 0.0)
@@ -135,7 +137,7 @@ def main(output_dir: str = "plots/histograms") -> None:
 
         if full_ckpt_path.exists() and config_path.exists():
             print(f"\nProcessing {name}...")
-            run_config = load_config(config_path)
+            run_config = cast(FullTrainConfig, load_config(config_path))
 
             weights = extract_weights(str(full_ckpt_path), run_config)
 

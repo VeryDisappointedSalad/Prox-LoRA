@@ -6,7 +6,7 @@ from pathlib import Path
 import clearml
 import lightning as L
 import wandb.sdk.wandb_run
-from lightning.fabric.plugins.precision.precision import _PRECISION_INPUT_STR
+from lightning.fabric.plugins.precision.precision import _PRECISION_INPUT_STR as _PRECISION_INPUT_STR
 from lightning.pytorch.callbacks import (
     DeviceStatsMonitor,
     LearningRateMonitor,

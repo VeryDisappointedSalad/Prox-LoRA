@@ -57,7 +57,7 @@ def run_adversarial_eval(
     std = list(OPENAI_DATASET_STD)
     preprocessing = dict(mean=mean, std=std, axis=-3)
 
-    fmodel = fb.PyTorchModel(model, bounds=(0, 1), device=actual_device, preprocessing=preprocessing)
+    fmodel = fb.models.pytorch.PyTorchModel(model, bounds=(0, 1), device=actual_device, preprocessing=preprocessing)
     attack = fb.attacks.LinfPGD()
     epsilons = [0.0, 0.0001, 0.001, 0.01, 0.02]
 
@@ -92,7 +92,7 @@ def run_adversarial_eval(
     print(f"\nEvaluated {min(current_count, target_count)} images successfully.")
 
     combined_success = torch.cat(total_success, dim=-1)[:, :target_count]
-    robust_accuracy = 1.0 - combined_success.float().mean(axis=-1).numpy()
+    robust_accuracy = 1.0 - combined_success.float().mean(dim=-1).numpy()
 
     del model, fmodel, model_module
     torch.cuda.empty_cache()
@@ -100,7 +100,7 @@ def run_adversarial_eval(
     return epsilons, robust_accuracy.tolist()
 
 
-def plot_robustness_curves(results_dict: dict, output_dir: Path) -> None:
+def plot_robustness_curves(results_dict: dict[str, tuple[list[float], list[float]]], output_dir: Path) -> None:
     output_dir.mkdir(exist_ok=True, parents=True)
     plt.figure(figsize=(10, 6))
 
@@ -119,7 +119,7 @@ def plot_robustness_curves(results_dict: dict, output_dir: Path) -> None:
     print(f"Plot dynamically updated: {plot_path}")
 
 
-def save_results_json(results_dict: dict, output_dir: Path):
+def save_results_json(results_dict: dict[str, tuple[list[float], list[float]]], output_dir: Path) -> None:
     json_path = output_dir / "robustness_results.json"
     with open(json_path, "w") as f:
         json.dump(results_dict, f, indent=4)
@@ -152,7 +152,7 @@ def main(
         if latest_ckpt:
             checkpoints[name] = latest_ckpt
 
-        all_results = {}
+    all_results = dict[str, tuple[list[float], list[float]]]()
 
     json_path = out_path / "robustness_results.json"
     if json_path.exists():

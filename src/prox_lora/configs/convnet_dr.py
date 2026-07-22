@@ -1,3 +1,5 @@
+from typing import Literal
+
 from prox_lora.datasets.base_data_module import DataLoaderConfig
 from prox_lora.datasets.diabetic_retinopathy import DRConfig
 from prox_lora.infrastructure.configs import deep_replace, register_configs
@@ -8,8 +10,8 @@ from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 # I guess no need for EPOCHS_HEAD and EPOCHS_ENTIRE, we are training the entire thing anyway
 EPOCHS = 50
 
-# size of the image passed - can only be in [224, 512, 1024]
-SIZE = 512
+# size of the image passed
+SIZE: Literal[1024, 512, 256, 224] = 512
 
 # precision for TrainerConfig. By default it's precision: _PRECISION_INPUT_STR = "32-true"
 PRECISION = "16-mixed"

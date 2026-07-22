@@ -4,6 +4,8 @@ from typing import Literal, Required, TypedDict
 
 from prox_lora.infrastructure.configs import yaml
 
+FloatScalar = float  # Actually a torch Tensor, but Optimizer.step is mistyped.
+
 
 class OptimizerConfig(TypedDict, total=False):
     """

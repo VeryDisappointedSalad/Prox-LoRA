@@ -1,7 +1,13 @@
+from collections.abc import Callable
+from typing import Any, cast, overload
+
 import torch
 import torch.nn.functional as F
 from timm.optim._optim_factory import OptimInfo, default_registry
 from torch.optim import Optimizer
+from torch.optim.optimizer import ParamsT
+
+from prox_lora.optimizers.common import FloatScalar
 
 
 class ProxSAMAdamW(Optimizer):
@@ -14,8 +20,16 @@ class ProxSAMAdamW(Optimizer):
     """
 
     def __init__(
-        self, params, lr=1e-3, betas=(0.9, 0.999), rho=0.05, prox_lambda=0.01, weight_decay=0.0, eps=1e-8, **kwargs
-    ):
+        self,
+        params: ParamsT,
+        lr: float = 1e-3,
+        betas: tuple[float, float] = (0.9, 0.999),
+        rho: float = 0.05,
+        prox_lambda: float = 0.01,
+        weight_decay: float = 0.0,
+        eps: float = 1e-8,
+        **kwargs: Any,
+    ) -> None:
         if lr < 0:
             raise ValueError(f"Invalid learning rate: {lr}")
         if not 0.0 <= betas[0] < 1.0:
@@ -30,8 +44,14 @@ class ProxSAMAdamW(Optimizer):
         defaults = dict(lr=lr, betas=betas, rho=rho, prox_lambda=prox_lambda, weight_decay=weight_decay, eps=eps)
         super().__init__(params, defaults)
 
+    @overload
+    def step(self, closure: None = None) -> None: ...
+
+    @overload
+    def step(self, closure: Callable[[], FloatScalar]) -> FloatScalar: ...
+
     @torch.no_grad()
-    def step(self, closure):
+    def step(self, closure: Callable[[], FloatScalar] | None = None) -> FloatScalar | None:
         if closure is None:
             raise ValueError("ProxSAM-AdamW requires a closure to calculate gradients at perturbed points.")
 
@@ -102,7 +122,7 @@ class ProxSAMAdamW(Optimizer):
         return loss
 
     @torch.no_grad()
-    def _grad_norm(self):
+    def _grad_norm(self) -> torch.Tensor:
         shared_device = self.param_groups[0]["params"][0].device
         norms = [
             p.grad.norm(p=2).to(shared_device)
@@ -112,7 +132,7 @@ class ProxSAMAdamW(Optimizer):
         ]
         if not norms:
             return torch.tensor(0.0, device=shared_device)
-        return torch.norm(torch.stack(norms), p=2)
+        return cast(torch.Tensor, torch.linalg.vector_norm(torch.stack(norms), p=2))
 
 
 info = OptimInfo(name="proxsamadw", opt_class=ProxSAMAdamW, description="Sharpness-Aware Proximal AdamW Optimizer")

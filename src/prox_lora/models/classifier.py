@@ -114,10 +114,10 @@ class Classifier(LightningModule):
                 inputs, targets = batch
                 logits = self.model(inputs)
                 adv_loss = nn.functional.cross_entropy(logits, targets, weight=self.class_weights)
-                adv_loss.backward()
+                adv_loss.backward()  # type: ignore[no-untyped-call]
                 return adv_loss
 
-            optimizer.step(closure=sam_closure)
+            optimizer.step(closure=sam_closure)  # type: ignore[arg-type] # mistyped return type of callback.
         else:
             optimizer.step()
 

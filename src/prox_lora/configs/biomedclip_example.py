@@ -1,7 +1,9 @@
+from typing import Literal
+
 from prox_lora.datasets.base_data_module import DataLoaderConfig
 from prox_lora.datasets.diabetic_retinopathy import DRConfig
 from prox_lora.infrastructure.configs import deep_replace, register_configs
-from prox_lora.infrastructure.trainer import FullTrainConfig, TrainerConfig
+from prox_lora.infrastructure.trainer import _PRECISION_INPUT_STR, FullTrainConfig, TrainerConfig
 from prox_lora.models.biomedclip import BiomedCLIPConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
@@ -9,11 +11,11 @@ from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 EPOCHS_HEAD = 25
 EPOCHS_ENTIRE = 10
 
-# size of the image passed - can only be in [224, 512, 1024]
-SIZE = 512
+# size of the image passed
+SIZE: Literal[1024, 512, 256, 224] = 512
 
 # precision for TrainerConfig. By default it's precision: _PRECISION_INPUT_STR = "32-true"
-PRECISION = "16-mixed"
+PRECISION: _PRECISION_INPUT_STR = "16-mixed"
 
 # batchsize 32 fails for entire model at 512x512, but works for head only tuning
 BATCH_SIZE = 16
@@ -24,10 +26,11 @@ BATCH_SIZE = 16
 with sampling [4, 2, 5, 0, 5], [6, 3, 4, 1, 2], [8, 1, 2, 3, 2] etc.
 without sampling  [13, 1, 2, 0, 0], [12, 2, 2, 0, 0], [13, 0, 3, 0, 0] etc.
 """
-USE_WEIGHTED_SAMPLING = True
+USE_WEIGHTED_SAMPLING: bool | Literal["sqrt"] = "sqrt"
 
 baseline = FullTrainConfig(
     name="biomedclip_example",
+    wandb_project="biomedclip_dr",
     datamodule=DRConfig(augmentations=True, size=SIZE, weighted_sampler=USE_WEIGHTED_SAMPLING),
     dataloader=DataLoaderConfig(batch_size=BATCH_SIZE, num_workers=4, pin_memory=True),
     # unfrozen_groups=14 cały model, unfrozen_groups=0 tylko głowa
