@@ -32,10 +32,42 @@ def example() -> None:
         "mnist_example_ISTA",
         {
             # "name": "mnist-april",
-            "dataloader.pin_memory": False
-            # "clearml_project": None,
+            "dataloader.pin_memory": False,
+            "wandb_project": "test",
         },
     )
+
+    # for s in [
+    #     # "biomedclip_example",
+    #     # "biomedclip_dr_AdamW_head_only",
+    #     # "biomedclip_dr_AdamW_entire_model",
+    #     # "biomedclip_dr_SGD_head_only",
+    #     # "biomedclip_dr_SGD_entire_model",
+    #     # "biomedclip_dr_proxsam_adaptive_entire",
+    #     # "biomedclip_dr_proxsam_adaptive_entire_zero_rho",
+    #     # "biomedclip_dr_proxsam_adaptive_entire_zero_proxlambda",
+    #     # "biomedclip_dr_proxsam_adaptive_head",
+    #     # "biomedclip_dr_proxsam_gd", # FAILED with sam_closure, re-ran with closure=sam_closure from here on. And float32 everywhere.
+    #     # "biomedclip_dr_SAM",
+    #     # "biomedclip_dr_proxsam_adamw_base",
+    #     # "biomedclip_dr_proxsam_adamw",
+    #     "biomedclip_dr_sam_adamw",
+    #     "biomedclip_dr_ista",
+    # ]:
+    #     start_training(s, {"trainer.precision": "32-true"})
+
+    # for s in (112, 64):
+    #     for batch_size in (128, 64, 256):
+    #         for lr in (1e-1, 2e-1, 5e-2):
+    #             start_training(
+    #                 "cifar_timm3_sgd",
+    #                 {
+    #                     "name": f"cifar_timm3_sgd_s{s}_b{batch_size}_lr{lr}",
+    #                     "datamodule.target_image_size": s,
+    #                     "dataloader.batch_size": batch_size,
+    #                     "optimizer.lr": lr,
+    #                 },
+    #             )
 
 
 def start_training(config: str, /, replace: dict[str, bool | int | float | str | None] | None = None) -> None:
