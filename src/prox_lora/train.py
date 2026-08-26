@@ -9,14 +9,10 @@ from prox_lora.infrastructure.configs import deep_replace, get_config, load_conf
 from prox_lora.infrastructure.slurm import SlurmConfig, submit_slurm_job
 from prox_lora.infrastructure.trainer import FullTrainConfig, get_new_run_dir, run_training
 from prox_lora.utils.io import PROJECT_ROOT
+from prox_lora.utils.other import format_float
 
-DEFAULT_SLURM_CONFIG = SlurmConfig(
-    duration="06:00:00",
-    partition="h100",
-    gpus=1,
-    cpus=8,
-    mem="30G",  # 32 cpu 128G is proportional,  8cpu 96G by default (weirdly low cpu)?.
-)
+DEFAULT_SLURM_CONFIG = SlurmConfig(duration="06:00:00", partition="h100", gpus=1, cpus=8, mem="30G")
+
 
 def main() -> None:
     tyro.extras.subcommand_cli_from_dict(
@@ -31,6 +27,7 @@ def main() -> None:
 
 
 def example() -> None:
+    # Start a single training with some replacements:
     # start_training(
     #     "mnist_example_ISTA",
     #     {
@@ -40,70 +37,31 @@ def example() -> None:
     #     },
     # )
 
+    # Submit a list of train configs to SLURM.
     # for s in [
-    #     # "biomedclip_example",
-    #     # "biomedclip_dr_AdamW_head_only",
-    #     # "biomedclip_dr_AdamW_entire_model",
-    #     # "biomedclip_dr_SGD_head_only",
-    #     # "biomedclip_dr_SGD_entire_model",
-    #     # "biomedclip_dr_proxsam_adaptive_entire",
-    #     # "biomedclip_dr_proxsam_adaptive_entire_zero_rho",
-    #     # "biomedclip_dr_proxsam_adaptive_entire_zero_proxlambda",
-    #     # "biomedclip_dr_proxsam_adaptive_head",
-    #     # "biomedclip_dr_proxsam_gd", # FAILED with sam_closure, re-ran with closure=sam_closure from here on. And float32 everywhere.
-    #     # "biomedclip_dr_SAM",
-    #     # "biomedclip_dr_proxsam_adamw_base",
-    #     # "biomedclip_dr_proxsam_adamw",
-    #     "biomedclip_dr_sam_adamw",
-    #     "biomedclip_dr_ista",
+    # "biomedclip_dr_proxsam_gd",
+    # "biomedclip_dr_SAM",
+    # "biomedclip_dr_proxsam_adamw_base",
+    # "biomedclip_dr_proxsam_adamw",
+    # "biomedclip_dr_sam_adamw",
+    # "biomedclip_dr_ista",
     # ]:
-    #     start_training(s, {"trainer.precision": "32-true"})
+    #     submit_training(s, {"trainer.precision": "32-true"})
 
-    # for s in [
-    #     "conv2_proxsamadw",
-    #     "conv2_proxsamadw_nowd",
-    # ]:
-    #     submit_training(s)
-
-    for prox_lambda in (0,): #  1e-4, 1e-3):
+    # Submit a grid of hyperparameter combinations to SLURM.
+    for prox_lambda in (0,):  #  1e-4, 1e-3):
         # for lr in (5e-2, 2e-2, 5e-3):
         for rho in (0.05, 0.01, 0.1, 0.02, 0.2):
-            #  0.01, 0.02, 0.05, 0.1, 0.2 # 0.1 bad, 0.05 okay, 0.01 też okay ale gorsze niż 0.05
             submit_training(
                 "conv2_proxsamadw",
                 {
-
-                    "name": f"conv2_proxsamadw_pl{_str(prox_lambda)}_rho{_str(rho)}",
+                    "name": f"conv2_proxsamadw_pl{format_float(prox_lambda)}_rho{format_float(rho)}",
                     "optimizer.opt": "ista",
                     # "optimizer.lr": lr,
                     "optimizer.prox_lambda": prox_lambda,
                     "optimizer.rho": rho,
-                }
+                },
             )
-
-def _str(x: float) -> str:
-    """Format 0.03 as 3e-2."""
-    if x == 0:
-        return "0"
-    exponent = int(f"{x:e}".split("e")[-1])
-    mantissa = x / (10**exponent)
-    mantissa = round(mantissa * 10**3) / 10**3
-    if abs(mantissa - int(mantissa)) < 1e-3:
-        mantissa = int(mantissa)
-    return f"{mantissa}e{exponent}"
-
-    # for s in (112, 64):
-    #     for batch_size in (128, 64, 256):
-    #         for lr in (1e-1, 2e-1, 5e-2):
-    #             start_training(
-    #                 "cifar_timm3_sgd",
-    #                 {
-    #                     "name": f"cifar_timm3_sgd_s{s}_b{batch_size}_lr{lr}",
-    #                     "datamodule.target_image_size": s,
-    #                     "dataloader.batch_size": batch_size,
-    #                     "optimizer.lr": lr,
-    #                 },
-    #             )
 
 
 def start_training(config: str, /, replace: dict[str, bool | int | float | str | None] | None = None) -> None:

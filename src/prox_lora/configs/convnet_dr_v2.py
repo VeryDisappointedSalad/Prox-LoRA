@@ -2,7 +2,7 @@ from prox_lora.datasets.base_data_module import DataLoaderConfig
 from prox_lora.datasets.diabetic_retinopathy import DRConfig
 from prox_lora.infrastructure.configs import deep_replace, register_configs
 from prox_lora.infrastructure.trainer import FullTrainConfig, TrainerConfig
-from prox_lora.models.classifier import ContinuousKappaConfig
+from prox_lora.models.classifier import MSELossConfig
 from prox_lora.models.ConvNet import KaggleConvNetConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
@@ -17,7 +17,7 @@ v2_baseline = FullTrainConfig(
     trainer=TrainerConfig(precision="bf16-mixed", max_epochs=75, log_every_n_steps=100),
     loss_ce_alpha=0.2,
     loss_class_weights_gamma=0.0,
-    continuous_kappa=ContinuousKappaConfig(alpha=5, mu=1.0, use_class_weights=True)
+    mse_loss=MSELossConfig(alpha=5, use_class_weights=True)
 )
 v2_b32 = deep_replace(v2_baseline, {"name": "conv2_b32", "dataloader.batch_size": 32})
 

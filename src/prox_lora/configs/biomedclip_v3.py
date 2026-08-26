@@ -3,7 +3,7 @@ from prox_lora.datasets.diabetic_retinopathy import DRConfig
 from prox_lora.infrastructure.configs import deep_replace, register_configs
 from prox_lora.infrastructure.trainer import FullTrainConfig, TrainerConfig
 from prox_lora.models.biomedclip import BiomedCLIPConfig
-from prox_lora.models.classifier import ContinuousKappaConfig
+from prox_lora.models.classifier import MSELossConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
 v3_baseline = FullTrainConfig(
@@ -25,7 +25,7 @@ v3_baseline = FullTrainConfig(
     ),
     loss_ce_alpha=0.2,
     loss_class_weights_gamma=0.0,
-    continuous_kappa=ContinuousKappaConfig(alpha=5, mu=1.0, use_class_weights=True)
+    mse_loss=MSELossConfig(alpha=5, use_class_weights=True)
 )
 v3_b32 = deep_replace(v3_baseline, {"name": "v3_b32", "dataloader.batch_size": 32})
 

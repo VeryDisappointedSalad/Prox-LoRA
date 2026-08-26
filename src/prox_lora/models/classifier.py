@@ -37,7 +37,8 @@ class Classifier(LightningModule):
     - loss_ce_alpha: multiplier for CE loss.
     - loss_class_weights_gamma: if non-zero, use class weights in the cross-entropy loss to counter class imbalance.
         Weights are computed as freq^gamma for each class.
-    - class_frequencies: List of frequencies for each class, only used with `loss_class_weights`.
+    - mse_loss: If not None, add continuous MSE loss to the final loss.
+    - class_frequencies: List of frequencies for each class, only used with `loss_class_weights_gamma`.
     """
 
     def __init__(
@@ -50,7 +51,7 @@ class Classifier(LightningModule):
         *,
         loss_ce_alpha: float = 1.0,
         loss_class_weights_gamma: float = 0.0,
-        continuous_kappa: ContinuousKappaConfig | None = None,
+        mse_loss: MSELossConfig | None = None,
         class_frequencies: list[float],
     ) -> None:
         super().__init__()
@@ -80,7 +81,7 @@ class Classifier(LightningModule):
             self.class_weights = None
 
         self.loss_ce_alpha = loss_ce_alpha
-        self.continuous_kappa_config = continuous_kappa
+        self.mse_loss_config = mse_loss
 
     def compute_loss(self, batch: tuple[Tensor, Tensor], phase: Literal["train", "val", "test"]) -> Tensor:
         inputs, targets = batch
@@ -92,18 +93,17 @@ class Classifier(LightningModule):
         accuracy = (predictions == targets).float().mean()
         loss = ce_loss
 
-        if self.continuous_kappa_config:
-            ckappa_loss = 1.0 - continuous_kappa(
+        if self.mse_loss_config:
+            mse_loss = weighted_continuous_MSE(
                 logits,
                 targets,
-                temperature=self.continuous_kappa_config.temperature,
-                mu=self.continuous_kappa_config.mu,
+                temperature=self.mse_loss_config.temperature,
                 class_frequencies=self.class_frequencies,
-                class_weights=self.class_weights if self.continuous_kappa_config.use_class_weights else None,
+                class_weights=self.class_weights if self.mse_loss_config.use_class_weights else None,
             )
-            self.log(f"_loss/ckappa/{phase}", ckappa_loss, batch_size=batch_size)
+            self.log(f"_loss/mse/{phase}", mse_loss, batch_size=batch_size)
 
-            loss = self.loss_ce_alpha * loss + self.continuous_kappa_config.alpha * ckappa_loss
+            loss = self.loss_ce_alpha * loss + self.mse_loss_config.alpha * mse_loss
 
         self.log(f"_loss/ce/{phase}", ce_loss, batch_size=batch_size)
         self.log(f"_loss/{phase}", loss, prog_bar=True, batch_size=batch_size)
@@ -204,64 +204,55 @@ class Classifier(LightningModule):
 
 @yaml.register_class
 @dataclass(frozen=True)
-class ContinuousKappaConfig:
+class MSELossConfig:
     alpha: float = 1.0
     """Weighting factor for the loss, in the total loss."""
 
     temperature: float = 1.0
     """Temperature for the softmax function."""
 
-    mu: float = 0.5
-    """
-    How much of the global dataset frequencies to mix in when computing the expected confusion matrix.
-    0 means only use the batch frequencies (which can be unstable/high variance),
-    1 means only use the global frequencies, effectively computing MSE loss.
-    """
-
     use_class_weights: bool = False
     """Whether to use class weights (see loss_class_weights_gamma) for this loss."""
 
 
-def continuous_kappa(
+def weighted_continuous_MSE(
     logits: Tensor,
     targets: Tensor,
     *,
     temperature: float = 1.0,
-    mu: float = 0.5,
     class_frequencies: list[float],
     class_weights: Tensor | None = None,
 ) -> Tensor:
     """
+    Computes the MSE of a random prediction in 0..(num_classes - 1), with a distribution given by logits.
+
+    Since predictions are given by a distribution, we compute how often each (true, predicted) pair occurs in expectation.
+    The result is continuous in logits (despite the random prediction being discrete), so it can be used in a loss function.
+
     Args:
         logits: (B, num_classes) float tensor of model outputs, before softmax.
         targets: (B,) int tensor of ground truth labels.
-
-        class_frequencies: List of true class frequencies in the whole dataset.
+        temperature: float, temperature for the softmax function (lower temperature makes logits more confident).
+        class_frequencies: List of true class frequencies in the whole dataset (used to normalize the result to 0..1).
+        class_weights: Optional tensor of shape (num_classes,) with weights for each class, used in the quadratic cost matrix.
+            If None, all classes are weighted equally.
     """
     B, num_classes = logits.shape
     probs = nn.functional.softmax(logits / temperature, dim=-1)
 
-    # Compute the confusion matrix: obs[i, j] = joint probability that an item was true class i and predicted as class j.
+    # Compute the confusion matrix: obs[i, j] = joint probability that an item had true class i and predicted class j.
     obs = torch.zeros((num_classes, num_classes), device=logits.device)
     for i in range(B):
         obs[targets[i], :] += probs[i, :] / B
 
-    # Compute the expected confusion matrix:
-    pred_dist = probs.mean(dim=0)  # (num_classes,)
-    true_dist = torch.zeros(num_classes, device=logits.device)  # true distribution in batch.
-    class_dist = torch.tensor(class_frequencies, device=logits.device)  # true distribution in whole dataset.
-    for i in range(B):
-        true_dist[targets[i]] += 1.0 / B
-    pred_dist = (1 - mu) * pred_dist + mu * class_dist
-    true_dist = (1 - mu) * true_dist + mu * class_dist
-    exp = torch.outer(true_dist, pred_dist)  # (num_classes, num_classes)
-
-    # Compute the quadratic cost matrix for Cohen's kappa.
+    # Compute the quadratic cost matrix.
     cost = quadratic_cost_matrix(num_classes, class_weights).to(logits.device)
 
-    print((cost * exp).sum())
+    # Compute the expected confusion matrix.
+    class_freqs = torch.tensor(class_frequencies, device=logits.device)
+    exp = torch.outer(class_freqs, class_freqs)  # shape (num_classes, num_classes)
 
-    return 1.0 - (cost * obs).sum() / (cost * exp).sum()
+    return (cost * obs).sum() / (cost * exp).sum()
 
 
 def quadratic_cost_matrix(num_classes: int, class_weights: Tensor | None) -> Tensor:
