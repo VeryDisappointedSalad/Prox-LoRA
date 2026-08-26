@@ -11,9 +11,12 @@ from prox_lora.infrastructure.trainer import FullTrainConfig, get_new_run_dir, r
 from prox_lora.utils.io import PROJECT_ROOT
 
 DEFAULT_SLURM_CONFIG = SlurmConfig(
-    duration="05:00:00", partition="common", gpus=1, exclude="asusgpu3,asusgpu4,asusgpu5,steven"
-) # Excluding nodes with 1080ti GPUs, since they fail with our PyTorch version.
-
+    duration="06:00:00",
+    partition="h100",
+    gpus=1,
+    cpus=8,
+    mem="30G",  # 32 cpu 128G is proportional,  8cpu 96G by default (weirdly low cpu)?.
+)
 
 def main() -> None:
     tyro.extras.subcommand_cli_from_dict(
@@ -28,14 +31,14 @@ def main() -> None:
 
 
 def example() -> None:
-    start_training(
-        "mnist_example_ISTA",
-        {
-            # "name": "mnist-april",
-            "dataloader.pin_memory": False,
-            "wandb_project": "test",
-        },
-    )
+    # start_training(
+    #     "mnist_example_ISTA",
+    #     {
+    #         # "name": "mnist-april",
+    #         "dataloader.pin_memory": False,
+    #         "wandb_project": "test",
+    #     },
+    # )
 
     # for s in [
     #     # "biomedclip_example",
@@ -55,6 +58,39 @@ def example() -> None:
     #     "biomedclip_dr_ista",
     # ]:
     #     start_training(s, {"trainer.precision": "32-true"})
+
+    # for s in [
+    #     "conv2_proxsamadw",
+    #     "conv2_proxsamadw_nowd",
+    # ]:
+    #     submit_training(s)
+
+    for prox_lambda in (0,): #  1e-4, 1e-3):
+        # for lr in (5e-2, 2e-2, 5e-3):
+        for rho in (0.05, 0.01, 0.1, 0.02, 0.2):
+            #  0.01, 0.02, 0.05, 0.1, 0.2 # 0.1 bad, 0.05 okay, 0.01 też okay ale gorsze niż 0.05
+            submit_training(
+                "conv2_proxsamadw",
+                {
+
+                    "name": f"conv2_proxsamadw_pl{_str(prox_lambda)}_rho{_str(rho)}",
+                    "optimizer.opt": "ista",
+                    # "optimizer.lr": lr,
+                    "optimizer.prox_lambda": prox_lambda,
+                    "optimizer.rho": rho,
+                }
+            )
+
+def _str(x: float) -> str:
+    """Format 0.03 as 3e-2."""
+    if x == 0:
+        return "0"
+    exponent = int(f"{x:e}".split("e")[-1])
+    mantissa = x / (10**exponent)
+    mantissa = round(mantissa * 10**3) / 10**3
+    if abs(mantissa - int(mantissa)) < 1e-3:
+        mantissa = int(mantissa)
+    return f"{mantissa}e{exponent}"
 
     # for s in (112, 64):
     #     for batch_size in (128, 64, 256):

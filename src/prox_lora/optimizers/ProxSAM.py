@@ -136,7 +136,7 @@ class ProxSAM(Optimizer):
         ]
         if not norms:
             return torch.tensor(0.0, device=shared_device)
-        return cast(torch.Tensor, torch.linalg.vector_norm(torch.stack(norms), p=2))
+        return cast(torch.Tensor, torch.linalg.vector_norm(torch.stack(norms), ord=2))
 
 
 # Register Prox-SAM optimizer

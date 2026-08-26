@@ -23,7 +23,7 @@ from prox_lora.datasets.mnist import MNISTConfig
 from prox_lora.infrastructure.cli import seed_everything
 from prox_lora.infrastructure.configs import deep_asdict, yaml
 from prox_lora.models.biomedclip import BiomedCLIPConfig
-from prox_lora.models.classifier import Classifier
+from prox_lora.models.classifier import Classifier, ContinuousKappaConfig
 from prox_lora.models.ConvNet import KaggleConvNetConfig
 from prox_lora.models.example_cnn import ExampleCNNConfig
 from prox_lora.models.timm import TimmConfig
@@ -59,7 +59,9 @@ class FullTrainConfig:
     datamodule: MNISTConfig | CIFAR10Config | DRConfig
     model: ExampleCNNConfig | TimmConfig | KaggleConvNetConfig | BiomedCLIPConfig
     dataloader: DataLoaderConfig = DataLoaderConfig(batch_size=64, num_workers=4, pin_memory=True)
+    loss_ce_alpha: float = 1.0  # Weight of CE loss in total loss.
     loss_class_weights_gamma: float = 0.0  # Weights in CE loss to counter class imbalance: class frequency^gamma.
+    continuous_kappa: ContinuousKappaConfig | None = None  # If not None, add continuous kappa loss to CE loss.
     optimizer: OptimizerConfig = field(
         default_factory=lambda: OptimizerConfig(opt="adamw", lr=0.01, weight_decay=1e-4, momentum=0.9)
     )
@@ -68,6 +70,7 @@ class FullTrainConfig:
     clearml_project: str | None = None  # was "Prox-LoRA"
     wandb_project: str | None = "test"
     seed: int = 1
+
 
 
 def run_training(
@@ -110,7 +113,9 @@ def run_training(
         optimizer=config.optimizer,
         scheduler=config.scheduler,
         steps_in_epoch=steps_in_epoch,
+        loss_ce_alpha=config.loss_ce_alpha,
         loss_class_weights_gamma=config.loss_class_weights_gamma,
+        continuous_kappa=config.continuous_kappa,
         class_frequencies=class_frequencies,
     )
 

@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from copy import replace
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Literal, cast
 
 import timm.scheduler.scheduler
@@ -13,6 +15,7 @@ from timm.scheduler import create_scheduler_v2
 from torch import Tensor
 from torchmetrics.classification import CohenKappa
 
+from prox_lora.infrastructure.configs import yaml
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
 
@@ -31,6 +34,7 @@ class Classifier(LightningModule):
             min_lr=0, warmup_lr=1e-05, warmup_epochs=0.
         See: https://huggingface.co/docs/timm/reference/schedulers#timm.scheduler.create_scheduler_v2
     - steps_in_epoch: Number of batches in an epoch, used to convert scheduler args from epochs to steps if needed.
+    - loss_ce_alpha: multiplier for CE loss.
     - loss_class_weights_gamma: if non-zero, use class weights in the cross-entropy loss to counter class imbalance.
         Weights are computed as freq^gamma for each class.
     - class_frequencies: List of frequencies for each class, only used with `loss_class_weights`.
@@ -44,8 +48,10 @@ class Classifier(LightningModule):
         scheduler: SchedulerConfig,
         steps_in_epoch: int = 0,
         *,
+        loss_ce_alpha: float = 1.0,
         loss_class_weights_gamma: float = 0.0,
-        class_frequencies: list[float] | None = None,
+        continuous_kappa: ContinuousKappaConfig | None = None,
+        class_frequencies: list[float],
     ) -> None:
         super().__init__()
         self.model = model
@@ -63,24 +69,43 @@ class Classifier(LightningModule):
         self.val_kappa = CohenKappa(task="multiclass", num_classes=num_classes, weights="quadratic")
         self.test_kappa = CohenKappa(task="multiclass", num_classes=num_classes, weights="quadratic")
 
+        self.class_frequencies = class_frequencies
         self.class_weights: Tensor | None
         if loss_class_weights_gamma != 0.0:
-            assert class_frequencies is not None, "class_frequencies must be provided if class_weights is not None"
             class_weights = [freq**loss_class_weights_gamma for freq in class_frequencies]
-            class_weights = [w / sum(class_weights) for w in class_weights]  # Normalize to sum to 1
+            # Normalize to sum to num_classes.
+            class_weights = [num_classes * w / sum(class_weights) for w in class_weights]
             self.register_buffer("class_weights", torch.tensor(class_weights))
         else:
             self.class_weights = None
+
+        self.loss_ce_alpha = loss_ce_alpha
+        self.continuous_kappa_config = continuous_kappa
 
     def compute_loss(self, batch: tuple[Tensor, Tensor], phase: Literal["train", "val", "test"]) -> Tensor:
         inputs, targets = batch
         batch_size = len(inputs)
 
         logits = self.model(inputs)
-        loss = nn.functional.cross_entropy(logits, targets, weight=self.class_weights)
+        ce_loss = nn.functional.cross_entropy(logits, targets, weight=self.class_weights)
         predictions = logits.argmax(dim=-1)
         accuracy = (predictions == targets).float().mean()
+        loss = ce_loss
 
+        if self.continuous_kappa_config:
+            ckappa_loss = 1.0 - continuous_kappa(
+                logits,
+                targets,
+                temperature=self.continuous_kappa_config.temperature,
+                mu=self.continuous_kappa_config.mu,
+                class_frequencies=self.class_frequencies,
+                class_weights=self.class_weights if self.continuous_kappa_config.use_class_weights else None,
+            )
+            self.log(f"_loss/ckappa/{phase}", ckappa_loss, batch_size=batch_size)
+
+            loss = self.loss_ce_alpha * loss + self.continuous_kappa_config.alpha * ckappa_loss
+
+        self.log(f"_loss/ce/{phase}", ce_loss, batch_size=batch_size)
         self.log(f"_loss/{phase}", loss, prog_bar=True, batch_size=batch_size)
         self.log(f"_accuracy/{phase}", accuracy, prog_bar=True, batch_size=batch_size)
 
@@ -175,3 +200,80 @@ class Classifier(LightningModule):
                     "interval": "epoch" if self.scheduler_config.step_on_epochs else "step",
                 },
             }
+
+
+@yaml.register_class
+@dataclass(frozen=True)
+class ContinuousKappaConfig:
+    alpha: float = 1.0
+    """Weighting factor for the loss, in the total loss."""
+
+    temperature: float = 1.0
+    """Temperature for the softmax function."""
+
+    mu: float = 0.5
+    """
+    How much of the global dataset frequencies to mix in when computing the expected confusion matrix.
+    0 means only use the batch frequencies (which can be unstable/high variance),
+    1 means only use the global frequencies, effectively computing MSE loss.
+    """
+
+    use_class_weights: bool = False
+    """Whether to use class weights (see loss_class_weights_gamma) for this loss."""
+
+
+def continuous_kappa(
+    logits: Tensor,
+    targets: Tensor,
+    *,
+    temperature: float = 1.0,
+    mu: float = 0.5,
+    class_frequencies: list[float],
+    class_weights: Tensor | None = None,
+) -> Tensor:
+    """
+    Args:
+        logits: (B, num_classes) float tensor of model outputs, before softmax.
+        targets: (B,) int tensor of ground truth labels.
+
+        class_frequencies: List of true class frequencies in the whole dataset.
+    """
+    B, num_classes = logits.shape
+    probs = nn.functional.softmax(logits / temperature, dim=-1)
+
+    # Compute the confusion matrix: obs[i, j] = joint probability that an item was true class i and predicted as class j.
+    obs = torch.zeros((num_classes, num_classes), device=logits.device)
+    for i in range(B):
+        obs[targets[i], :] += probs[i, :] / B
+
+    # Compute the expected confusion matrix:
+    pred_dist = probs.mean(dim=0)  # (num_classes,)
+    true_dist = torch.zeros(num_classes, device=logits.device)  # true distribution in batch.
+    class_dist = torch.tensor(class_frequencies, device=logits.device)  # true distribution in whole dataset.
+    for i in range(B):
+        true_dist[targets[i]] += 1.0 / B
+    pred_dist = (1 - mu) * pred_dist + mu * class_dist
+    true_dist = (1 - mu) * true_dist + mu * class_dist
+    exp = torch.outer(true_dist, pred_dist)  # (num_classes, num_classes)
+
+    # Compute the quadratic cost matrix for Cohen's kappa.
+    cost = quadratic_cost_matrix(num_classes, class_weights).to(logits.device)
+
+    print((cost * exp).sum())
+
+    return 1.0 - (cost * obs).sum() / (cost * exp).sum()
+
+
+def quadratic_cost_matrix(num_classes: int, class_weights: Tensor | None) -> Tensor:
+    """Compute the quadratic cost matrix for Cohen's kappa."""
+    if class_weights is not None:
+        return torch.tensor(
+            [
+                [(class_weights[i] * (i - j) ** 2) / ((num_classes - 1) ** 2) for j in range(num_classes)]
+                for i in range(num_classes)
+            ]
+        )
+    else:
+        return torch.tensor(
+            [[((i - j) ** 2) / ((num_classes - 1) ** 2) for j in range(num_classes)] for i in range(num_classes)]
+        )

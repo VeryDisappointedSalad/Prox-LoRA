@@ -65,7 +65,7 @@ class DRDataModule(BaseDataModule[tuple[Tensor, int]]):
         dataloader: DataLoaderConfig | None = None,
         *,
         size: Literal["original", 1024, 512, 256, 224] = 224,
-        augmentations: bool = False,
+        augmentations: bool | Literal["v2"] = False,
         weighted_sampler: bool | Literal["sqrt"] = False,
     ) -> None:
         super().__init__(num_classes=5, dataloader=dataloader)
@@ -73,8 +73,11 @@ class DRDataModule(BaseDataModule[tuple[Tensor, int]]):
 
         self.weighted_sampler = weighted_sampler
 
+        resize = list[v2.Transform]()
         if size == "original":
             resize = []
+        elif augmentations == "v2":
+            resize = [v2.RandomCrop((size, size), pad_if_needed=True)]
         else:
             # Images in data_dir, are already rescaled, CenterCrop will actually add padding to make them square.
             resize = [v2.CenterCrop((size, size))]
@@ -92,13 +95,26 @@ class DRDataModule(BaseDataModule[tuple[Tensor, int]]):
         self.train_transforms = (
             standard_transform
             if not augmentations
-            else v2.Compose(
-                [
-                    v2.RandomHorizontalFlip(p=0.5),
-                    v2.RandomVerticalFlip(p=0.5),
-                    v2.RandomRotation(degrees=15),  # type: ignore[arg-type]
-                    standard_transform,
-                ]
+            else (
+                v2.Compose(
+                    [
+                        v2.RandomHorizontalFlip(p=0.5),
+                        v2.RandomVerticalFlip(p=0.5),
+                        v2.RandomRotation(degrees=15),  # type: ignore[arg-type]
+                        v2.RandomEqualize(p=0.2),
+                        v2.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
+                        standard_transform,
+                    ]
+                )
+                if augmentations == "v2"
+                else v2.Compose(
+                    [
+                        v2.RandomHorizontalFlip(p=0.5),
+                        v2.RandomVerticalFlip(p=0.5),
+                        v2.RandomRotation(degrees=15),  # type: ignore[arg-type]
+                        standard_transform,
+                    ]
+                )
             )
         )
 
@@ -160,7 +176,7 @@ class DRDataModule(BaseDataModule[tuple[Tensor, int]]):
 @dataclass(frozen=True)
 class DRConfig:
     name: str = "DR-Kaggle"
-    augmentations: bool = True
+    augmentations: bool | Literal["v2"] = True
     size: Literal["original", 1024, 512, 256, 224] = 224
     weighted_sampler: bool | Literal["sqrt"] = False
 

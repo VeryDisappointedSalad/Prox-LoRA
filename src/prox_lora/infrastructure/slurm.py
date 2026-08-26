@@ -81,6 +81,7 @@ def make_sbatch_script(slurm_config: SlurmConfig, job_name: str, log_path: Path,
         f"--job-name={job_name}",
         f"--output={log_path.absolute()}",
         f"--error={log_path.absolute()}",
+        "--mem-bind=local"
     ]
     if slurm_config.mem is not None:
         sbatch_args += ["--mem", slurm_config.mem]

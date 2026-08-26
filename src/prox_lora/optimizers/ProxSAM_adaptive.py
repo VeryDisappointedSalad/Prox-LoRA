@@ -139,7 +139,7 @@ class ProxSAMAdaptive(Optimizer):
         ]
         if not norms:
             return torch.tensor(0.0, device=shared_device)
-        return cast(torch.Tensor, torch.linalg.vector_norm(torch.stack(norms), p=2))
+        return cast(torch.Tensor, torch.linalg.vector_norm(torch.stack(norms), ord=2))
 
 
 info = OptimInfo(name="proxsamadaptive", opt_class=ProxSAMAdaptive, description="Preconditioned ProxSAM Optimizer")
