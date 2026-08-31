@@ -2,6 +2,7 @@ from collections.abc import Callable, Iterable
 from typing import Any, overload
 
 import torch
+import torch.nn.functional as F
 from timm.optim._optim_factory import OptimInfo, default_registry
 from torch import nn
 from torch.optim import Optimizer
@@ -86,7 +87,7 @@ class FISTA(Optimizer):
                 if prox_lambda > 0:
                     threshold = prox_lambda * lr
                     # y_{t+1}
-                    y_next = torch.sign(z) * torch.maximum(z.abs() - threshold, torch.tensor(0.0, device=p.device))
+                    y_next = F.softshrink(z, threshold)
                 else:
                     y_next = z
 
@@ -104,5 +105,5 @@ class FISTA(Optimizer):
         return loss
 
 
-info = OptimInfo(name="fista", opt_class=FISTA, description="Custom FISTA Optimizer")
+info = OptimInfo(name="fista", opt_class=FISTA, has_eps=False, has_momentum=True, description="Custom FISTA Optimizer")
 default_registry.register(info)

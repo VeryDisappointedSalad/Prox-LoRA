@@ -160,5 +160,5 @@ class AdaProx(Optimizer):
 
 
 # Register AdaProx optimizer
-info = OptimInfo(name="adaprox", opt_class=AdaProx, description="Official ADAPROX (Melchior et al. 2020)")
+info = OptimInfo(name="adaprox", opt_class=AdaProx, has_betas=True, description="Official ADAPROX (Melchior et al. 2020)")
 default_registry.register(info)

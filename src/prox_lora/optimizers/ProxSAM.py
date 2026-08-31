@@ -114,12 +114,12 @@ class ProxSAM(Optimizer):
                 # Proximal L2 (Weight Decay / Ridge)
                 if weight_decay > 0:
                     # w_{t+1} = w'_{t+1} / (1 + \eta * \lambda_2)
-                    p.div_(1.0 + lr * weight_decay)
+                    p.mul_(1.0 - lr * weight_decay)
 
                 # Proximal L1 (Soft-thresholding / Lasso / Sparsity)
                 if prox_lambda > 0:
                     # w_{t+1} = sgn(w'_{t+1}) * max(|w'_{t+1}| - \eta * \lambda_1, 0)
-                    threshold = lr * prox_lambda
+                    threshold = prox_lambda * lr
                     p.copy_(F.softshrink(p, threshold))
 
         return loss
@@ -140,5 +140,5 @@ class ProxSAM(Optimizer):
 
 
 # Register Prox-SAM optimizer
-info = OptimInfo(name="proxsam", opt_class=ProxSAM, description="Sharpness-Aware Proximal Optimizer")
+info = OptimInfo(name="proxsam", opt_class=ProxSAM, has_momentum=True, description="Sharpness-Aware Proximal Optimizer")
 default_registry.register(info)

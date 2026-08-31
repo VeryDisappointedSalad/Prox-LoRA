@@ -121,5 +121,5 @@ class ProxAdam(Optimizer):
 
 
 # Register ProxAdam optimizer
-info = OptimInfo(name="proxadam", opt_class=ProxAdam, description="Custom Proximal Adam Optimizer")
+info = OptimInfo(name="proxadam", opt_class=ProxAdam, has_betas=True, description="Custom Proximal Adam Optimizer")
 default_registry.register(info)

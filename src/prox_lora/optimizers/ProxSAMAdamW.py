@@ -113,10 +113,10 @@ class ProxSAMAdamW(Optimizer):
                 p.addcdiv_(exp_avg, denom, value=-step_size)
 
                 if weight_decay > 0:
-                    p.div_(1.0 + lr * weight_decay)
+                    p.mul_(1.0 - lr * weight_decay)
 
                 if prox_lambda > 0:
-                    threshold = lr * prox_lambda
+                    threshold = prox_lambda * lr
                     p.copy_(F.softshrink(p, threshold))
 
         return loss
@@ -135,5 +135,5 @@ class ProxSAMAdamW(Optimizer):
         return cast(torch.Tensor, torch.linalg.vector_norm(torch.stack(norms), ord=2))
 
 
-info = OptimInfo(name="proxsamadw", opt_class=ProxSAMAdamW, description="Sharpness-Aware Proximal AdamW Optimizer")
+info = OptimInfo(name="proxsamadw", opt_class=ProxSAMAdamW, has_betas=True, description="Sharpness-Aware Proximal AdamW Optimizer")
 default_registry.register(info)

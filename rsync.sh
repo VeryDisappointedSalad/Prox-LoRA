@@ -36,6 +36,8 @@ elif [ "$destination" = "stationary" ]; then
     remote="stationary:Prox-LoRA/"
 elif [ "$destination" = "jerryrig" ]; then
     remote="jerryrig:Prox-LoRA/"
+elif [ "$destination" = "aws" ]; then
+    remote="aws:Prox-LoRA/"
 else
     echo "Invalid destination. Usage: $0 push|pull entropy|industrial|... --dry-run"
     exit 1
