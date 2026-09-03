@@ -17,8 +17,8 @@ class SlurmConfig:
     gpus: int = 1
     mail: str | None = None
 
-    # asusgpu1, asusgpu2, ...
-    nodelist: str | None = None
+    nodelist: str | None = None  # Comma-separated list of nodes to allow, like "asusgpu1,asusgpu2"
+    exclude: str | None = None  # Comma-separated list of nodes to exclude, like "asusgpu3,asusgpu4,asusgpu5,steven"
 
 
 def submit_slurm_job(
@@ -81,6 +81,7 @@ def make_sbatch_script(slurm_config: SlurmConfig, job_name: str, log_path: Path,
         f"--job-name={job_name}",
         f"--output={log_path.absolute()}",
         f"--error={log_path.absolute()}",
+        "--mem-bind=local"
     ]
     if slurm_config.mem is not None:
         sbatch_args += ["--mem", slurm_config.mem]
@@ -94,12 +95,14 @@ def make_sbatch_script(slurm_config: SlurmConfig, job_name: str, log_path: Path,
     if slurm_config.nodelist is not None:
         sbatch_args += [f"--nodelist={slurm_config.nodelist}"]
 
+    if slurm_config.exclude is not None:
+        sbatch_args += [f"--exclude={slurm_config.exclude}"]
+
     script = "#!/bin/bash\n"
     for arg in sbatch_args:
         script += f"#SBATCH {arg}\n"
     script += "\nset -euxo pipefail\nexport PYTHONUNBUFFERED=1\n"
     script += 'echo "Running on node: $(hostname)"\n\n'
 
-    # script += job_cmd + "\n"
     script += "srun " + job_cmd + "\n"
     return script

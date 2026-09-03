@@ -4,7 +4,13 @@ from pathlib import Path
 import pandas as pd
 import torch
 import tyro
-from torchmetrics.classification import Accuracy, CohenKappa, F1Score, Precision, Recall
+from torchmetrics.classification import (
+    MulticlassAccuracy,
+    MulticlassCohenKappa,
+    MulticlassF1Score,
+    MulticlassPrecision,
+    MulticlassRecall,
+)
 from tqdm import tqdm
 
 from prox_lora.datasets.base_data_module import DataLoaderConfig
@@ -57,11 +63,11 @@ def run_clean_eval(
     test_loader = datamodule.test_dataloader()
 
     num_classes = config.model.num_classes
-    acc_metric = Accuracy(task="multiclass", num_classes=num_classes).to(actual_device)
-    kappa_metric = CohenKappa(task="multiclass", num_classes=num_classes, weights="quadratic").to(actual_device)
-    f1_metric = F1Score(task="multiclass", num_classes=num_classes, average="macro").to(actual_device)
-    precision_metric = Precision(task="multiclass", num_classes=num_classes, average="macro").to(actual_device)
-    recall_metric = Recall(task="multiclass", num_classes=num_classes, average="macro").to(actual_device)
+    acc_metric = MulticlassAccuracy(num_classes=num_classes).to(actual_device)
+    kappa_metric = MulticlassCohenKappa(num_classes=num_classes, weights="quadratic").to(actual_device)
+    f1_metric = MulticlassF1Score(num_classes=num_classes, average="macro").to(actual_device)
+    precision_metric = MulticlassPrecision(num_classes=num_classes, average="macro").to(actual_device)
+    recall_metric = MulticlassRecall(num_classes=num_classes, average="macro").to(actual_device)
 
     print(f"Running Clean Evaluation on: {checkpoint_path}")
 
@@ -92,8 +98,7 @@ def run_clean_eval(
     return metrics_results
 
 
-def save_evaluation_results(results_dict: dict, output_dir: Path):
-
+def save_evaluation_results(results_dict: dict[str, dict[str, float]], output_dir: Path) -> None:
     df = pd.DataFrame.from_dict(results_dict, orient="index")
     csv_path = output_dir / "evaluation_metrics.csv"
     df.to_csv(csv_path, index_label="Model")
@@ -119,9 +124,12 @@ def main(
 
     model_directories = {
         "AdamW_head": runs_root / "biomedclip_dr_AdamW_head_only",
-        "SGD_head": runs_root / "biomedclip_dr_SGD_head_only",
+        # "SGD_head": runs_root / "biomedclip_dr_SGD_head_only",
         "AdamW_entire": runs_root / "biomedclip_dr_AdamW_entire_model",
-        "SGD_entire": runs_root / "biomedclip_dr_SGD_entire_model",
+        # "SGD_entire": runs_root / "biomedclip_dr_SGD_entire_model",
+        "ConvNetAdamW": runs_root / "convnet_dr_AdamW",
+        "ProxSamAdaptive_entire": runs_root / "biomedclip_dr_proxsam_adaptive_entire",
+        "ProxSamAdaptive_head": runs_root / "biomedclip_dr_proxsam_adaptive_head",
     }
 
     checkpoints = {}
@@ -129,7 +137,8 @@ def main(
         latest_ckpt = find_latest_checkpoint(dir_path)
         if latest_ckpt:
             checkpoints[name] = latest_ckpt
-            print(f"Found latest checkpoint for {name}: {latest_ckpt.relative_to(PROJECT_ROOT)}")
+            # I really like this emoji
+            print(f"🔎 Found latest checkpoint for {name}: {latest_ckpt.relative_to(PROJECT_ROOT)}")
         else:
             print(f"No checkpoint found in: {dir_path.relative_to(PROJECT_ROOT) if dir_path.exists() else dir_path}")
 

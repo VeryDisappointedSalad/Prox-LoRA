@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -6,6 +7,7 @@ import torch
 import tyro
 
 from prox_lora.infrastructure.configs import load_config
+from prox_lora.infrastructure.trainer import FullTrainConfig
 from prox_lora.models.classifier import Classifier
 from prox_lora.utils.io import PROJECT_ROOT
 
@@ -22,7 +24,7 @@ def find_latest_checkpoint(base_run_dir: Path) -> Path | None:
     return checkpoints[0]
 
 
-def extract_weights(checkpoint_path: str, config, device="cuda") -> np.ndarray:
+def extract_weights(checkpoint_path: str, config: FullTrainConfig, device: str = "cuda") -> np.ndarray:
     actual_device = device if torch.cuda.is_available() else "cpu"
 
     model_instance = config.model.instantiate()
@@ -47,7 +49,7 @@ def extract_weights(checkpoint_path: str, config, device="cuda") -> np.ndarray:
     return np.concatenate(weights)
 
 
-def plot_and_save_histogram(weights: np.ndarray, model_name: str, output_dir: Path):
+def plot_and_save_histogram(weights: np.ndarray, model_name: str, output_dir: Path) -> None:
 
     total_params = len(weights)
     exact_zeros = np.sum(weights == 0.0)
@@ -66,14 +68,14 @@ def plot_and_save_histogram(weights: np.ndarray, model_name: str, output_dir: Pa
     ax1.set_title("Standard Histogram (Linear Scale)", fontsize=14)
     ax1.set_xlabel("Weight Value", fontsize=12)
     ax1.set_ylabel("Frequency (Count)", fontsize=12)
-    ax1.grid(True, linestyle="--", alpha=0.6)
+    ax1.grid(visible=True, linestyle="--", alpha=0.6)
 
     ax2.hist(weights, bins=150, color="#ff7f0e", alpha=0.7, edgecolor="black", linewidth=0.5)
     ax2.set_yscale("log")
     ax2.set_title("Standard Histogram (Log Scale)", fontsize=14)
     ax2.set_xlabel("Weight Value", fontsize=12)
     ax2.set_ylabel("Frequency (Log Scale)", fontsize=12)
-    ax2.grid(True, linestyle="--", alpha=0.6)
+    ax2.grid(visible=True, linestyle="--", alpha=0.6)
 
     stats_text = (
         f"Total Weights: {total_params:,}\n"
@@ -113,11 +115,13 @@ def main(output_dir: str = "plots/histograms") -> None:
     runs_root = PROJECT_ROOT / "runs"
 
     model_directories = {
-        "Standard SGD": runs_root / "convnet_dr_SGD",
-        "AdamW": runs_root / "convnet_dr_AdamW",
-        "Standard SAM": runs_root / "convnet_dr_SAM",
-        "ProxSAM GD": runs_root / "convnet_dr_proxsam_gd",
-        "ProxSAM AdamW": runs_root / "convnet_dr_proxsam_adamw",
+        "AdamW_head": runs_root / "biomedclip_dr_AdamW_head_only",
+        # "SGD_head": runs_root / "biomedclip_dr_SGD_head_only",
+        "AdamW_entire": runs_root / "biomedclip_dr_AdamW_entire_model",
+        # "SGD_entire": runs_root / "biomedclip_dr_SGD_entire_model",
+        "ConvNetAdamW": runs_root / "convnet_dr_AdamW",
+        "ProxSamAdaptive_entire": runs_root / "biomedclip_dr_proxsam_adaptive_entire",
+        "ProxSamAdaptive_head": runs_root / "biomedclip_dr_proxsam_adaptive_head",
     }
 
     checkpoints = {}
@@ -133,7 +137,7 @@ def main(output_dir: str = "plots/histograms") -> None:
 
         if full_ckpt_path.exists() and config_path.exists():
             print(f"\nProcessing {name}...")
-            run_config = load_config(config_path)
+            run_config = cast(FullTrainConfig, load_config(config_path))
 
             weights = extract_weights(str(full_ckpt_path), run_config)
 

@@ -5,7 +5,8 @@ from pathlib import Path
 
 import clearml
 import lightning as L
-from lightning.fabric.plugins.precision.precision import _PRECISION_INPUT_STR
+import wandb.sdk.wandb_run
+from lightning.fabric.plugins.precision.precision import _PRECISION_INPUT_STR as _PRECISION_INPUT_STR
 from lightning.pytorch.callbacks import (
     DeviceStatsMonitor,
     LearningRateMonitor,
@@ -13,7 +14,7 @@ from lightning.pytorch.callbacks import (
     RichModelSummary,
     RichProgressBar,
 )
-from lightning.pytorch.loggers import TensorBoardLogger
+from lightning.pytorch.loggers import Logger, TensorBoardLogger, WandbLogger
 
 from prox_lora.datasets.base_data_module import DataLoaderConfig
 from prox_lora.datasets.cifar import CIFAR10Config
@@ -22,8 +23,10 @@ from prox_lora.datasets.mnist import MNISTConfig
 from prox_lora.infrastructure.cli import seed_everything
 from prox_lora.infrastructure.configs import deep_asdict, yaml
 from prox_lora.models.biomedclip import BiomedCLIPConfig
-from prox_lora.models.classifier import Classifier
+from prox_lora.models.classifier import Classifier, MSELossConfig
+from prox_lora.models.ConvNet import KaggleConvNetConfig
 from prox_lora.models.example_cnn import ExampleCNNConfig
+from prox_lora.models.timm import TimmConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
 
@@ -54,15 +57,20 @@ class TrainerConfig:
 class FullTrainConfig:
     name: str
     datamodule: MNISTConfig | CIFAR10Config | DRConfig
-    model: ExampleCNNConfig | BiomedCLIPConfig
+    model: ExampleCNNConfig | TimmConfig | KaggleConvNetConfig | BiomedCLIPConfig
     dataloader: DataLoaderConfig = DataLoaderConfig(batch_size=64, num_workers=4, pin_memory=True)
+    loss_ce_alpha: float = 1.0  # Weight of CE loss in total loss.
+    loss_class_weights_gamma: float = 0.0  # Weights in CE loss to counter class imbalance: class frequency^gamma.
+    mse_loss: MSELossConfig | None = None  # If not None, add continuous MSE loss.
     optimizer: OptimizerConfig = field(
         default_factory=lambda: OptimizerConfig(opt="adamw", lr=0.01, weight_decay=1e-4, momentum=0.9)
     )
     scheduler: SchedulerConfig = SchedulerConfig(sched="none")
     trainer: TrainerConfig = TrainerConfig()
-    clearml_project: str | None = "Prox-LoRA"
+    clearml_project: str | None = None  # was "Prox-LoRA"
+    wandb_project: str | None = "test"
     seed: int = 1
+
 
 
 def run_training(
@@ -94,15 +102,21 @@ def run_training(
     datamodule = config.datamodule.instantiate(dataloader=config.dataloader)
     datamodule.prepare_data()
     datamodule.setup()
+    class_frequencies = datamodule.get_class_frequencies()
     steps_in_epoch = len(datamodule.train_dataloader())
     model = config.model.instantiate()
     num_classes = config.model.num_classes
+    assert num_classes == len(class_frequencies), f"{num_classes=} ≠ {len(class_frequencies)}"
     classifier = Classifier(
         model=model,
         num_classes=num_classes,
         optimizer=config.optimizer,
         scheduler=config.scheduler,
         steps_in_epoch=steps_in_epoch,
+        loss_ce_alpha=config.loss_ce_alpha,
+        loss_class_weights_gamma=config.loss_class_weights_gamma,
+        mse_loss=config.mse_loss,
+        class_frequencies=class_frequencies,
     )
 
     task: clearml.Task | None = None
@@ -112,12 +126,28 @@ def run_training(
         )
         task.set_parameters_as_dict(deep_asdict(config))
 
+    wandb_run: wandb.sdk.wandb_run.Run | None = None
+    if config.wandb_project is not None:
+        wandb_run = wandb.init(
+            entity="Prox-LoRA",
+            project=config.wandb_project,
+            name=config.name + "/" + version,
+            config=deep_asdict(config),
+            dir=all_runs_dir,
+            resume="allow" if resume else None,
+        )
+
+    loggers = list[Logger]()
+    loggers.append(TensorBoardLogger(save_dir=all_runs_dir, name=config.name, version=version, default_hp_metric=False))
+    if wandb_run is not None:
+        loggers.append(WandbLogger(experiment=wandb_run))
+
     trainer = L.Trainer(
         default_root_dir=all_runs_dir / config.name,
         **asdict(config.trainer),
-        logger=TensorBoardLogger(save_dir=all_runs_dir, name=config.name, version=version, default_hp_metric=False),
+        logger=loggers,
         callbacks=[
-            DeviceStatsMonitor(cpu_stats=False),
+            # DeviceStatsMonitor(cpu_stats=False),
             LearningRateMonitor(logging_interval="step"),
             ModelCheckpoint(
                 filename=checkpoint_filename_pattern,
@@ -134,8 +164,10 @@ def run_training(
         enable_model_summary=False,  # Disable default model summary in favor of RichModelSummary.
     )
 
+    success = False
     try:
         trainer.fit(classifier, datamodule, ckpt_path="last" if resume else None)
+        success = True
     finally:
         if task is not None:
             print("Flushing ClearML, this may take a while...")
@@ -148,8 +180,14 @@ def run_training(
             task.flush(wait_for_uploads=True)
             print("Flushed.")
             proc.kill()  # Cancel the backup killer.
-    # if task is not None:
-    #     task.close()
+            if success:
+                task.close()
+        if wandb_run is not None:
+            print("Flushing W&B...")
+            wandb_run.finish(exit_code=0 if success else 1)
+            print("Flushed W&B.")
+            wandb.teardown()
+            print("Finished W&B.")
 
 
 def get_new_run_dir(d: Path) -> Path:

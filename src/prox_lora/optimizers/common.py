@@ -4,6 +4,8 @@ from typing import Literal, Required, TypedDict
 
 from prox_lora.infrastructure.configs import yaml
 
+FloatScalar = float  # Actually a torch Tensor, but Optimizer.step is mistyped.
+
 
 class OptimizerConfig(TypedDict, total=False):
     """
@@ -68,7 +70,7 @@ class OptimizerConfig(TypedDict, total=False):
     rho: float
     """Rho parameter for ADMM optimizer."""
 
-    betas: tuple
+    betas: tuple[float, float]
     """beta_1, beta_2 params for ProxAdam"""
 
 
@@ -90,7 +92,7 @@ class SchedulerConfig:
     patience_epochs: int = 10
     decay_rate: float = 0.1
     min_lr: float = 0
-    warmup_lr: float = 1e-5
+    warmup_lr: float = 0  # timm's default is 1e-5, which is often non-sense, zero is a sensible default.
     warmup_epochs: int = 0
     warmup_prefix: bool = False
 

@@ -1,6 +1,12 @@
+from collections.abc import Callable
+from typing import Any, overload
+
 import torch
 from timm.optim._optim_factory import OptimInfo, default_registry
 from torch.optim import Optimizer
+from torch.optim.optimizer import ParamsT
+
+from prox_lora.optimizers.common import FloatScalar
 
 
 class ProxAdam(Optimizer):
@@ -19,7 +25,16 @@ class ProxAdam(Optimizer):
        theta_{t+1} = sgn(theta_half) * max(|theta_half| - prox_lambda * lr, 0) --> Backward
     """
 
-    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0, prox_lambda=0.01, **kwargs):
+    def __init__(
+        self,
+        params: ParamsT,
+        lr: float = 1e-3,
+        betas: tuple[float, float] = (0.9, 0.999),
+        eps: float = 1e-8,
+        weight_decay: float = 0,
+        prox_lambda: float = 0.01,
+        **kwargs: Any,
+    ) -> None:
         if lr < 0:
             raise ValueError(f"Invalid learning rate: {lr}")
         if not 0.0 <= betas[0] < 1.0:
@@ -32,8 +47,14 @@ class ProxAdam(Optimizer):
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, prox_lambda=prox_lambda)
         super().__init__(params, defaults)
 
+    @overload
+    def step(self, closure: None = None) -> None: ...
+
+    @overload
+    def step(self, closure: Callable[[], FloatScalar]) -> FloatScalar: ...
+
     @torch.no_grad()
-    def step(self, closure=None):
+    def step(self, closure: Callable[[], FloatScalar] | None = None) -> FloatScalar | None:
         loss = None
         if closure is not None:
             with torch.enable_grad():
@@ -100,5 +121,5 @@ class ProxAdam(Optimizer):
 
 
 # Register ProxAdam optimizer
-info = OptimInfo(name="proxadam", opt_class=ProxAdam, description="Custom Proximal Adam Optimizer")
+info = OptimInfo(name="proxadam", opt_class=ProxAdam, has_betas=True, description="Custom Proximal Adam Optimizer")
 default_registry.register(info)

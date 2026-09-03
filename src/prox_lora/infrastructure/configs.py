@@ -111,7 +111,7 @@ def deep_asdict(d: Any) -> dict[str, Any]:
     return result
 
 
-def deep_replace[T](obj: T, replacements: dict[str, Any]) -> T:
+def deep_replace[T](obj: T, replacements: dict[str, Any], path: str = "") -> T:
     """
     Recursively replace specified values in a nested dataclass/dict structure.
 
@@ -122,23 +122,23 @@ def deep_replace[T](obj: T, replacements: dict[str, Any]) -> T:
         if isinstance(obj, MutableMapping):
             assert isinstance(k, str), f"Mapping keys into {type(obj)} must be str, got: {type(k)}"
             if k in obj and isinstance(v, dict):
-                v = deep_replace(obj[k], v)
+                v = deep_replace(obj[k], v, path=f"{path}.{k}")
             obj = copy(obj)
             obj[k] = v
         elif isinstance(obj, list):
             assert isinstance(k, int), f"Indices into {type(obj)} must be int, got: {type(k)}"
             if k in obj and isinstance(v, dict):
-                v = deep_replace(obj[k], v)
+                v = deep_replace(obj[k], v, path=f"{path}.{k}")
             obj = copy(obj)
             if k == len(obj):
                 obj.append(v)
             else:
                 obj[k] = v
         else:
-            assert is_dataclass(obj) and not isinstance(v, type), f"Expected mapping or dataclass, got: {type(obj)}"
+            assert is_dataclass(obj) and not isinstance(v, type), f"Expected mapping or dataclass, got: {type(obj)} under {path} {type(v)=} {is_dataclass(obj)=} {isinstance(v, type)=}"
             assert isinstance(k, str), f"Attr names into {type(obj)} must be str, got: {type(k)}"
             if hasattr(obj, k) and isinstance(v, dict):
-                v = deep_replace(getattr(obj, k), v)
+                v = deep_replace(getattr(obj, k), v, path=f"{path}.{k}")
             obj = replace(obj, **{k: v})  # type: ignore
 
     return obj

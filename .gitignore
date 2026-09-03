@@ -6,6 +6,7 @@ runs/
 data/mnist/
 data/cifar10/
 data/retinopathy
+plots/
 
 __pycache__/
 .pyc_cache/

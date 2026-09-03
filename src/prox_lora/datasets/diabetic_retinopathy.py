@@ -1,14 +1,16 @@
+from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal, cast
 
+import numpy as np
 import pandas as pd
 import torch
 from open_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
 from PIL import Image
 from torch import Tensor
-from torch.utils.data import random_split
+from torch.utils.data import DataLoader, WeightedRandomSampler, random_split
 from torchvision.transforms import v2
 
 from prox_lora.datasets.base_data_module import BaseDataModule, DataLoaderConfig
@@ -63,13 +65,19 @@ class DRDataModule(BaseDataModule[tuple[Tensor, int]]):
         dataloader: DataLoaderConfig | None = None,
         *,
         size: Literal["original", 1024, 512, 256, 224] = 224,
-        augmentations: bool = False,
+        augmentations: bool | Literal["v2"] = False,
+        weighted_sampler: bool | Literal["sqrt"] = False,
     ) -> None:
         super().__init__(num_classes=5, dataloader=dataloader)
         self.data_dir = PROJECT_ROOT / "data" / "retinopathy" / str(size)
 
+        self.weighted_sampler = weighted_sampler
+
+        resize = list[v2.Transform]()
         if size == "original":
             resize = []
+        elif augmentations == "v2":
+            resize = [v2.RandomCrop((size, size), pad_if_needed=True)]
         else:
             # Images in data_dir, are already rescaled, CenterCrop will actually add padding to make them square.
             resize = [v2.CenterCrop((size, size))]
@@ -87,15 +95,30 @@ class DRDataModule(BaseDataModule[tuple[Tensor, int]]):
         self.train_transforms = (
             standard_transform
             if not augmentations
-            else v2.Compose(
-                [
-                    v2.RandomHorizontalFlip(p=0.5),
-                    v2.RandomVerticalFlip(p=0.5),
-                    v2.RandomRotation(degrees=15),  # type: ignore[arg-type]
-                    standard_transform,
-                ]
+            else (
+                v2.Compose(
+                    [
+                        v2.RandomHorizontalFlip(p=0.5),
+                        v2.RandomVerticalFlip(p=0.5),
+                        v2.RandomRotation(degrees=15),  # type: ignore[arg-type]
+                        v2.RandomEqualize(p=0.2),
+                        v2.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
+                        standard_transform,
+                    ]
+                )
+                if augmentations == "v2"
+                else v2.Compose(
+                    [
+                        v2.RandomHorizontalFlip(p=0.5),
+                        v2.RandomVerticalFlip(p=0.5),
+                        v2.RandomRotation(degrees=15),  # type: ignore[arg-type]
+                        standard_transform,
+                    ]
+                )
             )
         )
+
+        self.train_labels: list[int]  # Initialized in setup('fit') for weighted sampling.
 
     def setup(self, stage: str | None = None) -> None:
         if stage == "fit" or stage is None:
@@ -106,22 +129,84 @@ class DRDataModule(BaseDataModule[tuple[Tensor, int]]):
             )
             # Hardcoded 9:1 train:val split. Does not group left and right eye together.
             rng = torch.Generator().manual_seed(42)
-            self.train_dataset, self.val_dataset = cast(
-                list[SizedDataset[tuple[Tensor, int]]], random_split(full_dataset, [0.9, 0.1], generator=rng)
-            )
+            train_subset, val_subset = random_split(full_dataset, [0.9, 0.1], generator=rng)
+            self.train_dataset = cast(SizedDataset[tuple[Tensor, int]], train_subset)
+            self.val_dataset = cast(SizedDataset[tuple[Tensor, int]], val_subset)
+
+            # Store labels of the training set for weighted sampling.
+            self.train_labels = [full_dataset.data[i][1] for i in train_subset.indices]
 
         if stage == "test" or stage is None:
             self.test_dataset = KaggleDRDataset(
                 img_dir=self.data_dir / "test", csv_path=self.data_dir / "testLabels.csv", transform=self.transform
             )
 
+    def train_dataloader(self) -> DataLoader[tuple[Tensor, int]]:
+        """Create a DataLoader with a weighted sampler."""
+        if not self.weighted_sampler:
+            return super().train_dataloader()
+
+        class_frequencies = self.get_class_frequencies()
+
+        if self.weighted_sampler == "sqrt":
+            class_weights = {cls: 1.0 / np.sqrt(freq) for cls, freq in enumerate(class_frequencies)}
+        elif self.weighted_sampler is True:
+            class_weights = {cls: 1.0 / freq for cls, freq in enumerate(class_frequencies)}
+        else:
+            raise ValueError(f"Unknown weighted_sampler value: {self.weighted_sampler}")
+
+        sampler = WeightedRandomSampler(
+            weights=[class_weights[label] for label in self.train_labels],  # Weight for each item.
+            num_samples=len(self.train_labels),  # This many are drawn to make one epoch.
+            replacement=True,  # Since we preserve epoch size, sampling without replacement is not possible.
+        )
+
+        return DataLoader(self.train_dataset, sampler=sampler, **asdict(self.dataloader))
+
+    def get_class_frequencies(self) -> list[float]:
+        """Return the frequency of each label in the training set (they sum to 1)."""
+        if not hasattr(self, "train_labels"):
+            raise RuntimeError("Call setup('fit') before get_class_frequencies")
+
+        counter = Counter(self.train_labels)
+        return [counter[i] / counter.total() for i in range(self.num_classes)]
+
 
 @yaml.register_class
 @dataclass(frozen=True)
 class DRConfig:
     name: str = "DR-Kaggle"
-    augmentations: bool = True
+    augmentations: bool | Literal["v2"] = True
     size: Literal["original", 1024, 512, 256, 224] = 224
+    weighted_sampler: bool | Literal["sqrt"] = False
 
     def instantiate(self, dataloader: DataLoaderConfig | None = None) -> DRDataModule:
-        return DRDataModule(dataloader=dataloader, augmentations=self.augmentations, size=self.size)
+        return DRDataModule(
+            dataloader=dataloader,
+            augmentations=self.augmentations,
+            size=self.size,
+            weighted_sampler=self.weighted_sampler,
+        )
+
+
+def test_weighted_sampler(batch_size: int, n_batches: int) -> None:
+    """Test the DR dataset and dataloader."""
+    datamodule = DRDataModule(DataLoaderConfig(batch_size=batch_size), size=224, weighted_sampler="sqrt")
+    datamodule.setup(stage="fit")
+    train_loader = datamodule.train_dataloader()
+    assert len(train_loader) == np.ceil(len(datamodule.train_dataset) / batch_size)
+
+    all_targets = list[int]()
+    for i, (_inputs, targets) in enumerate(train_loader):
+        assert targets.shape == (batch_size,) or i == len(train_loader) - 1
+        all_targets.extend(targets.tolist())
+        if i + 1 >= n_batches:
+            break
+
+    counter = Counter(all_targets)
+    frequencies = [counter[i] / counter.total() for i in range(5)]
+    print(f"Class distribution in {n_batches} batches: {[f'{x:.1%}' for x in frequencies]}")
+
+
+if __name__ == "__main__":
+    test_weighted_sampler(batch_size=16, n_batches=100)

@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import tyro
 from open_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
-from torchmetrics.classification import Accuracy, CohenKappa, F1Score
+from torchmetrics.classification import MulticlassAccuracy, MulticlassCohenKappa, MulticlassF1Score
 from tqdm import tqdm
 
 from prox_lora.datasets.base_data_module import DataLoaderConfig
@@ -52,11 +52,9 @@ def run_noise_eval(
 
     metrics_per_sigma = {
         sigma: {
-            "Accuracy": Accuracy(task="multiclass", num_classes=num_classes).to(actual_device),
-            "Quadratic_Kappa": CohenKappa(task="multiclass", num_classes=num_classes, weights="quadratic").to(
-                actual_device
-            ),
-            "F1_Macro": F1Score(task="multiclass", num_classes=num_classes, average="macro").to(actual_device),
+            "Accuracy": MulticlassAccuracy(num_classes=num_classes).to(actual_device),
+            "Quadratic_Kappa": MulticlassCohenKappa(num_classes=num_classes, weights="quadratic").to(actual_device),
+            "F1_Macro": MulticlassF1Score(num_classes=num_classes, average="macro").to(actual_device),
         }
         for sigma in noise_sigmas
     }
@@ -66,7 +64,7 @@ def run_noise_eval(
 
     with torch.no_grad():
         with tqdm(total=target_count, desc="Evaluating Images") as pbar:
-            for batch_idx, (images, labels) in enumerate(test_loader):
+            for _batch_idx, (images, labels) in enumerate(test_loader):
                 images, labels = images.to(actual_device), labels.to(actual_device)
 
                 unnormalized = (images * std_t + mean_t).clamp(0, 1)
@@ -98,7 +96,7 @@ def run_noise_eval(
 
     print(f"\nEvaluated {current_count} images successfully.")
 
-    model_history = {"Accuracy": [], "Quadratic_Kappa": [], "F1_Macro": []}
+    model_history: dict[str, list[float]] = {"Accuracy": [], "Quadratic_Kappa": [], "F1_Macro": []}
     for sigma in noise_sigmas:
         model_history["Accuracy"].append(round(float(metrics_per_sigma[sigma]["Accuracy"].compute().item()), 4))
         model_history["Quadratic_Kappa"].append(
@@ -112,7 +110,7 @@ def run_noise_eval(
     return noise_sigmas, model_history
 
 
-def plot_robustness_curves(results_dict: dict, output_dir: Path):
+def plot_robustness_curves(results_dict: dict[str, dict[str, list[float]]], output_dir: Path) -> None:
     output_dir.mkdir(exist_ok=True, parents=True)
     metrics_to_plot = ["Accuracy", "Quadratic_Kappa", "F1_Macro"]
 
@@ -127,7 +125,7 @@ def plot_robustness_curves(results_dict: dict, output_dir: Path):
         plt.title(rf"Robustness Curve: {metric_name.replace('_', ' ')} vs. Gaussian Noise ($\sigma$)")
         plt.xlabel(r"Noise Standard Deviation ($\sigma$)")
         plt.ylabel(metric_name.replace("_", " "))
-        plt.grid(True, linestyle="--")
+        plt.grid(visible=True, linestyle="--")
         plt.legend(loc="lower left" if metric_name != "Accuracy" else "upper right")
         plt.tight_layout()
 
@@ -137,7 +135,7 @@ def plot_robustness_curves(results_dict: dict, output_dir: Path):
         print(f"Generated plot: {plot_path}")
 
 
-def save_results_json(results_dict: dict, output_dir: Path):
+def save_results_json(results_dict: dict[str, dict[str, list[float]]], output_dir: Path) -> None:
     json_path = output_dir / "robustness_noise_results.json"
     with open(json_path, "w") as f:
         json.dump(results_dict, f, indent=4)
@@ -167,12 +165,13 @@ def main(
     runs_root = PROJECT_ROOT / "runs"
 
     model_directories = {
-        "AdamW": runs_root / "convnet_dr_AdamW",
-        "ProxSAM AdamW": runs_root / "convnet_dr_proxsam_adamw",
-        "SAM AdamW": runs_root / "convnet_dr_sam_adamw",
-        "ProxSAM GD": runs_root / "convnet_dr_proxsam_gd",
-        "Standard SAM": runs_root / "convnet_dr_SAM",
-        "Standard SGD": runs_root / "convnet_dr_SGD",
+        "AdamW_head": runs_root / "biomedclip_dr_AdamW_head_only",
+        # "SGD_head": runs_root / "biomedclip_dr_SGD_head_only",
+        "AdamW_entire": runs_root / "biomedclip_dr_AdamW_entire_model",
+        # "SGD_entire": runs_root / "biomedclip_dr_SGD_entire_model",
+        "ConvNetAdamW": runs_root / "convnet_dr_AdamW",
+        "ProxSamAdaptive_entire": runs_root / "biomedclip_dr_proxsam_adaptive_entire",
+        "ProxSamAdaptive_head": runs_root / "biomedclip_dr_proxsam_adaptive_head",
     }
 
     checkpoints = {}
@@ -182,7 +181,7 @@ def main(
             checkpoints[name] = latest_ckpt
             print(f"🔎 Found checkpoint for {name}: {latest_ckpt.relative_to(PROJECT_ROOT)}")
 
-    all_results = {}
+    all_results = dict[str, dict[str, list[float]]]()
     json_path = out_path / "robustness_noise_results.json"
     if json_path.exists():
         try:

@@ -133,5 +133,5 @@ class ADMM(Optimizer):
 
 
 # Register ADMM optimizer
-info = OptimInfo(name="admm", opt_class=ADMM, description="Custom ADMM Optimizer")
+info = OptimInfo(name="admm", opt_class=ADMM, has_eps=False, has_momentum=True, description="Custom ADMM Optimizer")
 default_registry.register(info)

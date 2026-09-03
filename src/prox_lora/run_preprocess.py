@@ -1,3 +1,4 @@
+# type: ignore
 import gzip
 import json
 import shutil
@@ -61,7 +62,7 @@ def get_circle_scores(img, grad, ys, xs, rs):
 
 def find_circle(pil_img, ys, xs, rs, downscale):
     pil_img = pil_img.reduce(downscale)
-    H, W = pil_img.height, pil_img.width
+    # H, W = pil_img.height, pil_img.width
     img = np.array(pil_img).max(axis=2)
 
     grad = np.stack((cv2.Scharr(img, cv2.CV_64F, 0, 1), cv2.Scharr(img, cv2.CV_64F, 1, 0)), axis=-1)
@@ -168,7 +169,7 @@ if __name__ == "__main__":
 
     # scaling
     print(f"Cutting images to fit {target_size}...")
-    paired_data = list(zip(img_paths, results_list))
+    paired_data = list(zip(img_paths, results_list, strict=True))
     process_map(crop_and_rescale_and_save, paired_data, max_workers=12, chunksize=4, smoothing=0.01)
 
     print(f"Ended in {time.time() - start_time:.2f}s!")
