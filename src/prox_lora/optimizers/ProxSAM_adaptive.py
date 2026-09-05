@@ -43,49 +43,53 @@ class ProxSAMAdaptive(Optimizer):
     def step(self, closure: Callable[[], FloatScalar]) -> FloatScalar: ...
 
     @torch.no_grad()
-    def step(
-        self, closure: Callable[[], FloatScalar] | None = None, sam_closure: Callable[[], FloatScalar] | None = None
-    ) -> FloatScalar | None:
-
-        # ProxSamAdaptive needs to overwrite closure very explicitely
-        closure = closure if closure is not None else sam_closure
+    def step(self, closure: Callable[[], FloatScalar] | None = None) -> FloatScalar | None:
         if closure is None:
             raise ValueError("ProxSAMAdaptive requires a closure to calculate gradients at perturbed points.")
-
-        grad_norm = self._grad_norm()
-
-        # SAM
-        for group in self.param_groups:
-            rho = group["rho"]
-            eps = group["eps"]
-            scale = rho / (grad_norm + eps)
-
-            for p in group["params"]:
-                if p.grad is None:
-                    continue
-                state = self.state[p]
-                state["eps_hat"] = p.grad * scale
-                p.add_(state["eps_hat"])
-
-        # grad evaluation at perturbed point
         with torch.enable_grad():
             loss = closure()
 
-        # dscent and Proximal Step
+        # SAM
+        grad_norm = self._grad_norm()
+        any_rho = any(group["rho"] > 0 for group in self.param_groups)
+        if any_rho:
+            for group in self.param_groups:
+                rho = group["rho"]
+                eps = group["eps"]
+
+                for p in group["params"]:
+                    if p.grad is None:
+                        continue
+
+                    self.state[p]["old_p"] = p.data.clone()
+
+                    # Move to adversarial point:
+                    # p += \hat{ε}_t
+                    # where \hat{ε}_t = p.grad * scale
+                    p.add_(p.grad, alpha=rho / (grad_norm + eps))
+
+            # Grad evaluation at perturbed point.
+            with torch.enable_grad():
+                loss = closure()
+
+        # Descent and proximal step.
         for group in self.param_groups:
             lr = group["lr"]
             beta1, beta2 = group["betas"]
             eps = group["eps"]
             weight_decay = group["weight_decay"]  # Lambda_2
             prox_lambda = group["prox_lambda"]  # Lambda_1
+            rho = group["rho"]
 
             for p in group["params"]:
                 if p.grad is None:
                     continue
+
                 state = self.state[p]
 
-                # original weights
-                p.sub_(state["eps_hat"])
+                # Restore original weights from time step t, after SAM step.
+                if rho:
+                    p.copy_(state["old_p"])
 
                 g_sam = p.grad
 

@@ -6,8 +6,8 @@ from prox_lora.models.classifier import MSELossConfig
 from prox_lora.models.ConvNet import KaggleConvNetConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
-v2_baseline = FullTrainConfig(
-    name="conv2_baseline",
+conv4_adamw = FullTrainConfig(
+    name="conv4_adamw",
     wandb_project="conv_dr",
     datamodule=DRConfig(augmentations=True, size=512, weighted_sampler="sqrt"),
     dataloader=DataLoaderConfig(batch_size=64, num_workers=4, pin_memory=True),
@@ -19,34 +19,28 @@ v2_baseline = FullTrainConfig(
     loss_class_weights_gamma=0.0,
     mse_loss=MSELossConfig(alpha=5, use_class_weights=True),
 )
-v2_b32 = deep_replace(v2_baseline, {"name": "conv2_b32", "dataloader.batch_size": 32})
 
-v2_sgd = deep_replace(
-    v2_baseline,
-    # lr=7e-3 .. 2e-1 works best.
-    {"name": "conv2_sgd", "optimizer": OptimizerConfig(opt="sgd", lr=5e-2, weight_decay=1e-4, momentum=0.9)},
-)
-v2_sgd_b32 = deep_replace(v2_sgd, {"name": "conv2_sgd_b32", "dataloader.batch_size": 32})
-
-v2_proxsamadw = deep_replace(
-    v2_baseline,
+# As the SGD baseline, use non-Nesterov momentum with decoupled weight decay (SGDW).
+conv4_sgd = deep_replace(
+    conv4_adamw,
+    # lr=2e-2 .. 2e-1, wd<=5e-3, pl<=2e-4, rho=2e-2 (or <=1e-1) works best.
     {
-        "name": "conv2_proxsamadw",
-        "optimizer": OptimizerConfig(opt="proxsamadw", lr=1e-3, weight_decay=1e-4, momentum=0.9, prox_lambda=0, rho=0),
+        "name": "conv4_sgd",
+        "optimizer": OptimizerConfig(opt="sgdw-nonesterov", lr=5e-2, weight_decay=5e-3, momentum=0.9),
+    },
+)
+
+conv4_proxsam_dummy = deep_replace(
+    conv4_sgd,
+    {
+        "name": "conv4_proxsam_dummy",
+        "optimizer": OptimizerConfig(opt="proxsam", prox_lambda=0, rho=0),
     },
 )
 
 register_configs(
-    v2_baseline,
-    v2_b32,
-    v2_sgd,
-    v2_sgd_b32,
-    # --------------------------------------------------#
-    # AdamW
-    v2_proxsamadw,
-    # --------------------------------------------------#
-    # Basic prox - ISTA, FISTA
-    deep_replace(
-        v2_sgd, {"name": "conv2_ista", "optimizer.opt": "ista", "optimizer.lr": 5e-2, "optimizer.prox_lambda": 1e-4}
-    ),
+    conv4_adamw,
+    conv4_sgd,
+    conv4_proxsam_dummy,
+    # deep_replace(conv4_sgd, {"name": "conv4_sgd_m0", "optimizer.momentum": 0.0}),
 )

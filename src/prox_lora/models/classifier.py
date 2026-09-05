@@ -83,15 +83,15 @@ class Classifier(LightningModule):
         self.loss_ce_alpha = loss_ce_alpha
         self.mse_loss_config = mse_loss
 
+        # For optimizers that compute the loss twice per step (e.g. SAM), we only log at the first loss computation.
+        self._first_loss_in_step = True
+
     def compute_loss(self, batch: tuple[Tensor, Tensor], phase: Literal["train", "val", "test"]) -> Tensor:
         inputs, targets = batch
         batch_size = len(inputs)
 
         logits = self.model(inputs)
         ce_loss = nn.functional.cross_entropy(logits, targets, weight=self.class_weights)
-        predictions = logits.argmax(dim=-1)
-        accuracy = (predictions == targets).float().mean()
-        loss = ce_loss
 
         if self.mse_loss_config:
             mse_loss = weighted_continuous_MSE(
@@ -103,7 +103,19 @@ class Classifier(LightningModule):
             )
             self.log(f"_loss/mse/{phase}", mse_loss, batch_size=batch_size)
 
-            loss = self.loss_ce_alpha * loss + self.mse_loss_config.alpha * mse_loss
+            loss = self.loss_ce_alpha * ce_loss + self.mse_loss_config.alpha * mse_loss
+        else:
+            loss = self.loss_ce_alpha * ce_loss
+
+        if phase == "train":
+            # For optimizers that compute the loss twice per step (e.g. SAM), we only log at the first loss computation.
+            if self._first_loss_in_step:
+                self._first_loss_in_step = False
+            else:
+                return loss
+
+        predictions = logits.argmax(dim=-1)
+        accuracy = (predictions == targets).float().mean()
 
         self.log(f"_loss/ce/{phase}", ce_loss, batch_size=batch_size)
         self.log(f"_loss/{phase}", loss, prog_bar=True, batch_size=batch_size)
@@ -122,29 +134,15 @@ class Classifier(LightningModule):
     def training_step(self, batch: tuple[Tensor, Tensor], batch_idx: int) -> None:
         optimizer = cast(torch.optim.Optimizer, self.optimizers())
 
-        optimizer.zero_grad()
+        def closure() -> Tensor:
+            optimizer.zero_grad()
+            # with torch.autocast(device_type=self.device.type, dtype=torch.float16):
+            loss = self.compute_loss(batch, phase="train")
+            self.manual_backward(loss)
+            return loss
 
-        loss = self.compute_loss(batch, phase="train")
-
-        self.manual_backward(loss)
-
-        opt_name = (
-            self.optimizer_config["opt"] if isinstance(self.optimizer_config, dict) else self.optimizer_config.opt
-        )
-        if opt_name in ["proxsam", "proxsamadw", "proxsamadaptive"]:
-
-            def sam_closure() -> Tensor:
-                optimizer.zero_grad()
-                # with torch.autocast(device_type=self.device.type, dtype=torch.float16):
-                inputs, targets = batch
-                logits = self.model(inputs)
-                adv_loss = nn.functional.cross_entropy(logits, targets, weight=self.class_weights)
-                adv_loss.backward()  # type: ignore[no-untyped-call]
-                return adv_loss
-
-            optimizer.step(closure=sam_closure)  # type: ignore[arg-type] # mistyped return type of callback.
-        else:
-            optimizer.step()
+        self._first_loss_in_step = True
+        optimizer.step(closure=closure)  # type: ignore[arg-type] # mistyped return type of callback.
 
         self._step_scheduler("batch")
 
