@@ -69,7 +69,6 @@ class KaggleConvNet(nn.Module):
         self.classifier = nn.Sequential(
             nn.Flatten(),
             nn.Dropout(p=self.config.dropout_rate),
-            # nn.Linear(in_channels, in_channels), TODO
             nn.Linear(in_channels, self.config.num_classes),
         )
 

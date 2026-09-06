@@ -4,6 +4,7 @@ from typing import Any, cast, overload
 import torch
 import torch.nn.functional as F
 from timm.optim._optim_factory import OptimInfo, default_registry
+from timm.optim.sgdw import SGDW
 from torch.optim import Optimizer
 from torch.optim.optimizer import ParamsT
 
@@ -57,36 +58,39 @@ class ProxSAM(Optimizer):
     def step(self, closure: Callable[[], FloatScalar] | None = None) -> FloatScalar | None:
         if closure is None:
             raise ValueError("Prox-SAM requires a closure to calculate gradients at perturbed points.")
-
-        grad_norm = self._grad_norm()
-
-        for group in self.param_groups:
-            rho = group["rho"]
-            eps = group["eps"]
-
-            # \hat{\epsilon}_t scale factor
-            scale = rho / (grad_norm + eps)
-
-            for p in group["params"]:
-                if p.grad is None:
-                    continue
-
-                state = self.state[p]
-
-                # \hat{\epsilon}_t
-                state["eps_hat"] = p.grad * scale
-
-                # move to adversarial point
-                p.add_(state["eps_hat"])
-
         with torch.enable_grad():
             loss = closure()
 
+        # SAM
+        grad_norm = self._grad_norm()
+        any_rho = any(group["rho"] > 0 for group in self.param_groups)
+        if any_rho:
+            for group in self.param_groups:
+                rho = group["rho"]
+                eps = group["eps"]
+
+                for p in group["params"]:
+                    if p.grad is None:
+                        continue
+
+                    self.state[p]["old_p"] = p.data.clone()
+
+                    # Move to adversarial point:
+                    # p += \hat{ε}_t
+                    # where \hat{ε}_t = p.grad * scale
+                    p.add_(p.grad, alpha=rho / (grad_norm + eps))
+
+            # Grad evaluation at perturbed point.
+            with torch.enable_grad():
+                loss = closure()
+
+        # Descent and proximal step.
         for group in self.param_groups:
             lr = group["lr"]
             momentum = group["momentum"]
             weight_decay = group["weight_decay"]
             prox_lambda = group["prox_lambda"]
+            rho = group["rho"]
 
             for p in group["params"]:
                 if p.grad is None:
@@ -94,8 +98,9 @@ class ProxSAM(Optimizer):
 
                 state = self.state[p]
 
-                # original weights from time step t ---> w_t = w_{t, adv} - \hat{\epsilon}_t
-                p.sub_(state["eps_hat"])
+                # Restore original weights from time step t, after SAM step.
+                if rho:
+                    p.copy_(state["old_p"])
 
                 g_sam = p.grad
 
@@ -106,15 +111,13 @@ class ProxSAM(Optimizer):
                         state["momentum_buffer"].mul_(momentum).add_(g_sam)
                     g_sam = state["momentum_buffer"]
 
-                # Forward: w'_{t+1} = w_t - \eta * g^{SAM}_t
-                p.add_(g_sam, alpha=-lr)
-
-                # Backward
-
-                # Proximal L2 (Weight Decay / Ridge)
+                # Proximal L2 (Decoupled Weight Decay / Ridge)
                 if weight_decay > 0:
-                    # w_{t+1} = w'_{t+1} / (1 + \eta * \lambda_2)
+                    # w_{t+1} = w'_{t+1} / (1 + \eta * \lambda)
                     p.mul_(1.0 - lr * weight_decay)
+
+                # Descent step: w'_{t+1} = w_t - \eta * g^{SAM}_t
+                p.add_(g_sam, alpha=-lr)
 
                 # Proximal L1 (Soft-thresholding / Lasso / Sparsity)
                 if prox_lambda > 0:
@@ -126,7 +129,6 @@ class ProxSAM(Optimizer):
 
     @torch.no_grad()
     def _grad_norm(self) -> torch.Tensor:
-
         shared_device = self.param_groups[0]["params"][0].device
         norms = [
             p.grad.norm(p=2).to(shared_device)
@@ -142,3 +144,14 @@ class ProxSAM(Optimizer):
 # Register Prox-SAM optimizer
 info = OptimInfo(name="proxsam", opt_class=ProxSAM, has_momentum=True, description="Sharpness-Aware Proximal Optimizer")
 default_registry.register(info)
+
+default_registry.register(
+    OptimInfo(
+        name="sgdw-nonesterov",
+        opt_class=SGDW,
+        description="SGD with decoupled weight decay and non-Nesterov momentum",
+        has_eps=False,
+        has_momentum=True,
+        defaults={"nesterov": False},
+    )
+)

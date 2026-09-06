@@ -6,8 +6,8 @@ from prox_lora.models.biomedclip import BiomedCLIPConfig
 from prox_lora.models.classifier import MSELossConfig
 from prox_lora.optimizers.common import OptimizerConfig, SchedulerConfig
 
-v3_baseline = FullTrainConfig(
-    name="v3_baseline",
+bmc4_adamw = FullTrainConfig(
+    name="bmc4_adamw",
     wandb_project="biomedclip_dr",
     datamodule=DRConfig(augmentations=True, size=512, weighted_sampler="sqrt"),
     dataloader=DataLoaderConfig(batch_size=64, num_workers=4, pin_memory=True),
@@ -19,7 +19,7 @@ v3_baseline = FullTrainConfig(
     ),
     trainer=TrainerConfig(
         precision="bf16-mixed",
-        accumulate_grad_batches=1,  # TODO: throws an error for any > 1
+        accumulate_grad_batches=1,  # >1 is incompatible with mixed precision.
         max_epochs=30,
         log_every_n_steps=100,
     ),
@@ -27,23 +27,28 @@ v3_baseline = FullTrainConfig(
     loss_class_weights_gamma=0.0,
     mse_loss=MSELossConfig(alpha=5, use_class_weights=True)
 )
-v3_b32 = deep_replace(v3_baseline, {"name": "v3_b32", "dataloader.batch_size": 32})
 
-
-
-# For SGD, both batch-size 32 and 64 work about the same, best for lr=4e-5.
-v3_sgd = deep_replace(
-    v3_baseline, {"name": "v3_sgd", "optimizer": OptimizerConfig(opt="sgd", lr=4e-5, weight_decay=1e-4, momentum=0.9)}
+# As the SGD baseline, use non-Nesterov momentum with decoupled weight decay (SGDW).
+# For SGD, both batch-size 32 and 64 work about the same, best for lr<=2e-5, wd<=1.0, pl <1e-1, rho <5e-3
+bmc4_sgd = deep_replace(
+    bmc4_adamw, {"name": "bmc4_sgd", "optimizer": OptimizerConfig(opt="sgdw-nonesterov", lr=2e-5, weight_decay=1e-1, momentum=0.9)}
 )
-v3_sgd_b32 = deep_replace(v3_sgd, {"name": "v3_sgd_b32", "dataloader.batch_size": 32})
 
+
+bmc4_proxsam_dummy = deep_replace(
+    bmc4_sgd,
+    {
+        "name": "bmc4_proxsam_dummy",
+        "optimizer": OptimizerConfig(opt="proxsam", prox_lambda=0, rho=0),
+    },
+)
 
 register_configs(
-    v3_baseline,
-    deep_replace(v3_b32, {"name": "v3_1024", "datamodule.size": 1024, "model.input_shape": (3, 1024, 1024)}),
-    v3_sgd,
-    v3_sgd_b32,
-    deep_replace(
-        v3_baseline, {"name": "v3_nosampler", "datamodule.weighted_sampler": False, "loss_class_weights_gamma": -0.5}
-    ),
+    bmc4_adamw,
+    # deep_replace(bmc4_baseline, {"name": "bmc4_1024", "datamodule.size": 1024, "model.input_shape": (3, 1024, 1024)}),
+    # deep_replace(
+    #     bmc4_baseline, {"name": "bmc4_nosampler", "datamodule.weighted_sampler": False, "loss_class_weights_gamma": -0.5}
+    # ),
+    bmc4_sgd,
+    bmc4_proxsam_dummy,
 )
