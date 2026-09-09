@@ -1,5 +1,5 @@
-import json
 from pathlib import Path
+from typing import cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,63 +9,42 @@ from open_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
 from torchmetrics.classification import MulticlassAccuracy, MulticlassCohenKappa, MulticlassF1Score
 from tqdm import tqdm
 
-from prox_lora.datasets.base_data_module import DataLoaderConfig
-from prox_lora.infrastructure.configs import load_config
-from prox_lora.infrastructure.trainer import FullTrainConfig
-from prox_lora.models.classifier import Classifier
-from prox_lora.utils.io import PROJECT_ROOT
+from prox_lora.datasets.common import SizedDataset
+from prox_lora.infrastructure.cli import CLI
+from prox_lora.utils.eval import get_checkpoints_to_plot, load_for_eval
+from prox_lora.utils.io import PROJECT_ROOT, load_json, save_json_atomic
 
 
 def run_noise_eval(
-    checkpoint_path: str, config: FullTrainConfig, target_count: int, test_batch_size: int, device: str = "cuda"
+    checkpoint_path: Path, target_count: int | None, test_batch_size: int, device: str = "cuda"
 ) -> tuple[list[float], dict[str, list[float]]]:
+    config, model, test_loader = load_for_eval(Path(checkpoint_path), test_batch_size, device)
 
-    actual_device = device
-    if device == "cuda" and not torch.cuda.is_available():
-        print("WARNING: Requested 'cuda' but GPU is not available! Falling back to 'cpu'.")
-        actual_device = "cpu"
+    if target_count is None:
+        target_count = len(cast(SizedDataset[tuple[torch.Tensor, int]], test_loader.dataset))
 
-    model_instance = config.model.instantiate()
-    model_module = Classifier.load_from_checkpoint(
-        checkpoint_path,
-        model=model_instance,
-        num_classes=config.model.num_classes,
-        optimizer=config.optimizer,
-        scheduler=config.scheduler,
-    )
-    model = model_module.model.to(actual_device).eval()
-
-    eval_dataloader_cfg = DataLoaderConfig(
-        batch_size=test_batch_size, num_workers=4, pin_memory=(actual_device == "cuda")
-    )
-    datamodule = config.datamodule.instantiate(dataloader=eval_dataloader_cfg)
-    datamodule.setup(stage="test")
-    test_loader = datamodule.test_dataloader()
-
-    mean = list(OPENAI_DATASET_MEAN)
-    std = list(OPENAI_DATASET_STD)
-    mean_t = torch.tensor(mean).view(3, 1, 1).to(actual_device)
-    std_t = torch.tensor(std).view(3, 1, 1).to(actual_device)
+    mean_t = torch.tensor(list(OPENAI_DATASET_MEAN)).view(3, 1, 1).to(device)
+    std_t = torch.tensor(list(OPENAI_DATASET_STD)).view(3, 1, 1).to(device)
 
     noise_sigmas = list(np.linspace(0, 0.5, 20, endpoint=True))
     num_classes = config.model.num_classes
 
     metrics_per_sigma = {
         sigma: {
-            "Accuracy": MulticlassAccuracy(num_classes=num_classes).to(actual_device),
-            "Quadratic_Kappa": MulticlassCohenKappa(num_classes=num_classes, weights="quadratic").to(actual_device),
-            "F1_Macro": MulticlassF1Score(num_classes=num_classes, average="macro").to(actual_device),
+            "Accuracy": MulticlassAccuracy(num_classes=num_classes, average="macro").to(device),
+            "Quadratic_Kappa": MulticlassCohenKappa(num_classes=num_classes, weights="quadratic").to(device),
+            "F1_Macro": MulticlassF1Score(num_classes=num_classes, average="macro").to(device),
         }
         for sigma in noise_sigmas
     }
 
     current_count = 0
-    print(f"Gaussian Noise Comprehensive Eval on: {checkpoint_path} (Device: {actual_device})")
+    print(f"Gaussian Noise Comprehensive Eval on: {checkpoint_path} (Device: {device})")
 
     with torch.no_grad():
         with tqdm(total=target_count, desc="Evaluating Images") as pbar:
             for _batch_idx, (images, labels) in enumerate(test_loader):
-                images, labels = images.to(actual_device), labels.to(actual_device)
+                images, labels = images.to(device), labels.to(device)
 
                 unnormalized = (images * std_t + mean_t).clamp(0, 1)
                 batch_size = images.size(0)
@@ -91,6 +70,7 @@ def run_noise_eval(
 
                 current_count += added_count
                 pbar.update(added_count)
+                pbar.set_postfix({"Acc": round(float(metrics_per_sigma[0.0]["Accuracy"].compute().item()), 4)})
                 if current_count >= target_count:
                     break
 
@@ -104,7 +84,7 @@ def run_noise_eval(
         )
         model_history["F1_Macro"].append(round(float(metrics_per_sigma[sigma]["F1_Macro"].compute().item()), 4))
 
-    del model, model_module
+    del model
     torch.cuda.empty_cache()
 
     return noise_sigmas, model_history
@@ -135,95 +115,51 @@ def plot_robustness_curves(results_dict: dict[str, dict[str, list[float]]], outp
         print(f"Generated plot: {plot_path}")
 
 
-def save_results_json(results_dict: dict[str, dict[str, list[float]]], output_dir: Path) -> None:
-    json_path = output_dir / "robustness_noise_results.json"
-    with open(json_path, "w") as f:
-        json.dump(results_dict, f, indent=4)
-
-
-def find_latest_checkpoint(base_run_dir: Path) -> Path | None:
-    if not base_run_dir.exists():
-        return None
-    checkpoints = list(base_run_dir.glob("**/checkpoints/last.ckpt"))
-    if not checkpoints:
-        checkpoints = list(base_run_dir.glob("**/*.ckpt"))
-    if not checkpoints:
-        return None
-    checkpoints.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return checkpoints[0]
-
-
 def main(
-    target_count: int = 1024,
+    target_count: int | None = 1024,
     test_batch_size: int = 16,
     output_dir: str = "plots/robustness",
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
 ) -> None:
-
     print("Starting Comprehensive Gaussian Noise Robustness Script...")
     out_path = PROJECT_ROOT / output_dir
-    runs_root = PROJECT_ROOT / "runs"
 
-    model_directories = {
-        "AdamW_head": runs_root / "biomedclip_dr_AdamW_head_only",
-        # "SGD_head": runs_root / "biomedclip_dr_SGD_head_only",
-        "AdamW_entire": runs_root / "biomedclip_dr_AdamW_entire_model",
-        # "SGD_entire": runs_root / "biomedclip_dr_SGD_entire_model",
-        "ConvNetAdamW": runs_root / "convnet_dr_AdamW",
-        "ProxSamAdaptive_entire": runs_root / "biomedclip_dr_proxsam_adaptive_entire",
-        "ProxSamAdaptive_head": runs_root / "biomedclip_dr_proxsam_adaptive_head",
-    }
-
-    checkpoints = {}
-    for name, dir_path in model_directories.items():
-        latest_ckpt = find_latest_checkpoint(dir_path)
-        if latest_ckpt:
-            checkpoints[name] = latest_ckpt
-            print(f"🔎 Found checkpoint for {name}: {latest_ckpt.relative_to(PROJECT_ROOT)}")
+    checkpoints = get_checkpoints_to_plot()
 
     all_results = dict[str, dict[str, list[float]]]()
     json_path = out_path / "robustness_noise_results.json"
     if json_path.exists():
-        try:
-            with open(json_path) as f:
-                all_results = json.load(f)
-                print(f"Loaded existing results for: {list(all_results.keys())}")
-        except Exception:
-            all_results = {}
+        all_results = load_json(json_path)
+        print(f"Loaded existing results for: {list(all_results.keys())}")
 
-    for name, full_ckpt_path in checkpoints.items():
+    for name, ckpt_path in checkpoints.items():
         if name in all_results:
             print(f"Skipping {name}, already evaluated.")
             continue
 
-        config_path = full_ckpt_path.parent.parent / "config.yaml"
+        print(f"\nEntering into {name}...")
 
-        if full_ckpt_path.exists() and config_path.exists():
-            print(f"\nEntering into {name}...")
-            run_config = load_config(config_path)
+        sigmas, history = run_noise_eval(
+            checkpoint_path=ckpt_path,
+            target_count=target_count,
+            test_batch_size=test_batch_size,
+            device=device,
+        )
 
-            sigmas, history = run_noise_eval(
-                checkpoint_path=str(full_ckpt_path),
-                config=run_config,
-                target_count=target_count,
-                test_batch_size=test_batch_size,
-                device=device,
-            )
+        all_results[name] = {
+            "sigmas": sigmas,
+            "Accuracy": history["Accuracy"],
+            "Quadratic_Kappa": history["Quadratic_Kappa"],
+            "F1_Macro": history["F1_Macro"],
+        }
 
-            all_results[name] = {
-                "sigmas": sigmas,
-                "Accuracy": history["Accuracy"],
-                "Quadratic_Kappa": history["Quadratic_Kappa"],
-                "F1_Macro": history["F1_Macro"],
-            }
+        plot_robustness_curves(all_results, out_path)
+        save_json_atomic(all_results, json_path)
 
-            plot_robustness_curves(all_results, out_path)
-            save_results_json(all_results, out_path)
-        else:
-            print(f"Skipping {name}, missing config or checkpoint.")
 
     print("\nAll tasks finalized successfully!")
 
 
 if __name__ == "__main__":
+    CLI().before_main()
     tyro.cli(main)

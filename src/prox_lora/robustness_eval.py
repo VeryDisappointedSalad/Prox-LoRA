@@ -1,5 +1,5 @@
-import json
 from pathlib import Path
+from typing import cast
 
 import foolbox as fb
 import matplotlib.pyplot as plt
@@ -8,75 +8,45 @@ import tyro
 from open_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
 from tqdm import tqdm
 
-from prox_lora.datasets.base_data_module import DataLoaderConfig
-from prox_lora.infrastructure.configs import load_config
-from prox_lora.infrastructure.trainer import FullTrainConfig
-from prox_lora.models.classifier import Classifier
-from prox_lora.utils.io import PROJECT_ROOT
-
-
-def find_latest_checkpoint(base_run_dir: Path) -> Path | None:
-    if not base_run_dir.exists():
-        return None
-    checkpoints = list(base_run_dir.glob("**/checkpoints/last.ckpt"))
-    if not checkpoints:
-        checkpoints = list(base_run_dir.glob("**/*.ckpt"))
-    if not checkpoints:
-        return None
-    checkpoints.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return checkpoints[0]
+from prox_lora.datasets.common import SizedDataset
+from prox_lora.infrastructure.cli import CLI
+from prox_lora.utils.eval import get_checkpoints_to_plot, load_for_eval
+from prox_lora.utils.io import PROJECT_ROOT, load_json, save_json_atomic
 
 
 def run_adversarial_eval(
-    checkpoint_path: str, config: FullTrainConfig, target_count: int, test_batch_size: int, device: str = "cuda"
+    checkpoint_path: Path, target_count: int | None, test_batch_size: int, device: str = "cuda"
 ) -> tuple[list[float], list[float]]:
+    _config, model, test_loader = load_for_eval(Path(checkpoint_path), test_batch_size, device)
 
-    actual_device = device
-    if device == "cuda" and not torch.cuda.is_available():
-        print("WARNING: Requested 'cuda' but GPU is not available! Falling back to 'cpu'. This will be very slow.")
-        actual_device = "cpu"
-
-    model_instance = config.model.instantiate()
-    model_module = Classifier.load_from_checkpoint(
-        checkpoint_path,
-        model=model_instance,
-        num_classes=config.model.num_classes,
-        optimizer=config.optimizer,
-        scheduler=config.scheduler,
-    )
-    model = model_module.model.to(actual_device).eval()
-
-    eval_dataloader_cfg = DataLoaderConfig(
-        batch_size=test_batch_size, num_workers=4, pin_memory=(actual_device == "cuda")
-    )
-    datamodule = config.datamodule.instantiate(dataloader=eval_dataloader_cfg)
-    datamodule.setup(stage="test")
-    test_loader = datamodule.test_dataloader()
+    if target_count is None:
+        target_count = len(cast(SizedDataset[tuple[torch.Tensor, int]], test_loader.dataset))
 
     mean = list(OPENAI_DATASET_MEAN)
     std = list(OPENAI_DATASET_STD)
     preprocessing = dict(mean=mean, std=std, axis=-3)
 
-    fmodel = fb.models.pytorch.PyTorchModel(model, bounds=(0, 1), device=actual_device, preprocessing=preprocessing)
+    fmodel = fb.models.pytorch.PyTorchModel(model, bounds=(0, 1), device=device, preprocessing=preprocessing)
     attack = fb.attacks.LinfPGD()
     epsilons = [0.0, 0.0001, 0.001, 0.01, 0.02]
 
     total_success = []
     current_count = 0
 
-    print(f"PGD Attack on: {checkpoint_path} (Device: {actual_device})")
-    mean_t = torch.tensor(mean).view(3, 1, 1).to(actual_device)
-    std_t = torch.tensor(std).view(3, 1, 1).to(actual_device)
+    print(f"PGD Attack on: {checkpoint_path} (Device: {device})")
+    mean_t = torch.tensor(mean).view(3, 1, 1).to(device)
+    std_t = torch.tensor(std).view(3, 1, 1).to(device)
 
     _total_batches = min(len(test_loader), (target_count + test_batch_size - 1) // test_batch_size)
 
     with tqdm(total=target_count, desc="Evaluating Images") as pbar:
         for _batch_idx, (images, labels) in enumerate(test_loader):
-            images, labels = images.to(actual_device), labels.to(actual_device)
+            images, labels = images.to(device), labels.to(device)
 
             unnormalized = (images * std_t + mean_t).clamp(0, 1)
 
             _, _, success = attack(fmodel, unnormalized, labels, epsilons=epsilons)
+            # success has shape (len(epsilons), batch_size), dtype bool where True indicates a successful attack.
 
             total_success.append(success.cpu())
 
@@ -86,6 +56,13 @@ def run_adversarial_eval(
             current_count += added_count
             pbar.update(added_count)
 
+            combined_success = torch.cat(total_success, dim=-1)[:, :target_count]
+            robust_accuracy = 1.0 - combined_success.float().mean(dim=-1).numpy()
+            pbar.set_postfix({
+                f"Acc@{eps}": round(float(robust_accuracy[i]), 4)
+                for i, eps in enumerate(epsilons)
+            })
+
             if current_count >= target_count:
                 break
 
@@ -94,7 +71,7 @@ def run_adversarial_eval(
     combined_success = torch.cat(total_success, dim=-1)[:, :target_count]
     robust_accuracy = 1.0 - combined_success.float().mean(dim=-1).numpy()
 
-    del model, fmodel, model_module
+    del model, fmodel
     torch.cuda.empty_cache()
 
     return epsilons, robust_accuracy.tolist()
@@ -119,76 +96,45 @@ def plot_robustness_curves(results_dict: dict[str, tuple[list[float], list[float
     print(f"Plot dynamically updated: {plot_path}")
 
 
-def save_results_json(results_dict: dict[str, tuple[list[float], list[float]]], output_dir: Path) -> None:
-    json_path = output_dir / "robustness_results.json"
-    with open(json_path, "w") as f:
-        json.dump(results_dict, f, indent=4)
-
-
 def main(
-    target_count: int = 64,
+    target_count: int | None = 64,
     test_batch_size: int = 16,
     output_dir: str = "plots/robustness",
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
 ) -> None:
-
     print("Starting Robustness Evaluation Script...")
     out_path = PROJECT_ROOT / output_dir
 
-    runs_root = PROJECT_ROOT / "runs"
-    model_directories = {
-        "AdamW_head": runs_root / "biomedclip_dr_AdamW_head_only",
-        # "SGD_head": runs_root / "biomedclip_dr_SGD_head_only",
-        "AdamW_entire": runs_root / "biomedclip_dr_AdamW_entire_model",
-        # "SGD_entire": runs_root / "biomedclip_dr_SGD_entire_model",
-        "ConvNetAdamW": runs_root / "convnet_dr_AdamW",
-        "ProxSamAdaptive_entire": runs_root / "biomedclip_dr_proxsam_adaptive_entire",
-        "ProxSamAdaptive_head": runs_root / "biomedclip_dr_proxsam_adaptive_head",
-    }
-
-    checkpoints = {}
-    for name, dir_path in model_directories.items():
-        latest_ckpt = find_latest_checkpoint(dir_path)  # Upewnij się, że dokopiowałeś tę funkcję na górę pliku
-        if latest_ckpt:
-            checkpoints[name] = latest_ckpt
+    checkpoints = get_checkpoints_to_plot()
 
     all_results = dict[str, tuple[list[float], list[float]]]()
 
     json_path = out_path / "robustness_results.json"
     if json_path.exists():
-        with open(json_path) as f:
-            all_results = json.load(f)
-            print(f"Loaded existing partial results for: {list(all_results.keys())}")
+        all_results = load_json(json_path)
+        print(f"Loaded existing partial results for: {list(all_results.keys())}")
 
-    for name, ckpt_rel_path in checkpoints.items():
+    for name, ckpt_path in checkpoints.items():
         if name in all_results:
             print(f"Skipping {name}, already evaluated.")
             continue
 
-        full_ckpt_path = PROJECT_ROOT / ckpt_rel_path
-        config_path = full_ckpt_path.parent.parent / "config.yaml"
+        print(f"\nEntering into {name}...")
 
-        if full_ckpt_path.exists() and config_path.exists():
-            print(f"\nEntering into {name}...")
+        eps, acc = run_adversarial_eval(
+            checkpoint_path=ckpt_path,
+            target_count=target_count,
+            test_batch_size=test_batch_size,
+            device=device,
+        )
+        all_results[name] = (eps, acc)
 
-            run_config = load_config(config_path)
-
-            eps, acc = run_adversarial_eval(
-                checkpoint_path=str(full_ckpt_path),
-                config=run_config,
-                target_count=target_count,
-                test_batch_size=test_batch_size,
-                device=device,
-            )
-            all_results[name] = (eps, acc)
-
-            plot_robustness_curves(all_results, out_path)
-            save_results_json(all_results, out_path)
-        else:
-            print(f"Skipping {name}, checkpoint or config.yaml not found!")
+        plot_robustness_curves(all_results, out_path)
+        save_json_atomic(all_results, json_path)
 
     print("\nAll models evaluated successfully!")
 
 
 if __name__ == "__main__":
+    CLI().before_main()
     tyro.cli(main)

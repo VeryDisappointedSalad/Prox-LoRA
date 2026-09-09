@@ -128,7 +128,8 @@ class ProxSAMAdaptive(Optimizer):
                     adaptive_l1_threshold = (lr * prox_lambda) / denom
 
                     # w_{t+1} = sign(w) * max(|w| - threshold, 0)
-                    p.copy_(F.softshrink(p, adaptive_l1_threshold))
+                    # p.copy_(F.softshrink(p, adaptive_l1_threshold))
+                    p.copy_(torch.sign(p) * torch.clamp(torch.abs(p) - adaptive_l1_threshold, min=0.0))
 
         return loss
 
