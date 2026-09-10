@@ -52,7 +52,7 @@ class Classifier(LightningModule):
         loss_ce_alpha: float = 1.0,
         loss_class_weights_gamma: float = 0.0,
         mse_loss: MSELossConfig | None = None,
-        class_frequencies: list[float],
+        class_frequencies: list[float] | None = None,
     ) -> None:
         super().__init__()
         self.model = model
@@ -70,7 +70,7 @@ class Classifier(LightningModule):
         self.val_kappa = CohenKappa(task="multiclass", num_classes=num_classes, weights="quadratic")
         self.test_kappa = CohenKappa(task="multiclass", num_classes=num_classes, weights="quadratic")
 
-        self.class_frequencies = class_frequencies
+        self.class_frequencies = class_frequencies or [1.0 / num_classes] * num_classes
         self.class_weights: Tensor | None
         if loss_class_weights_gamma != 0.0:
             class_weights = [freq**loss_class_weights_gamma for freq in class_frequencies]

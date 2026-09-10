@@ -70,6 +70,7 @@ class FullTrainConfig:
     clearml_project: str | None = None  # was "Prox-LoRA"
     wandb_project: str | None = "test"
     seed: int = 1
+    compiler_backend: str | None = None  # inductor/cudagraphs/openxla/tvm/..., or None for no torch.compile.
 
 
 
@@ -107,6 +108,10 @@ def run_training(
     model = config.model.instantiate()
     num_classes = config.model.num_classes
     assert num_classes == len(class_frequencies), f"{num_classes=} ≠ {len(class_frequencies)}"
+    if config.compiler_backend is not None:
+        print(f"Compiling model with backend {config.compiler_backend}...")
+        model.compile(backend=config.compiler_backend)
+        print("Compiled model.")
     classifier = Classifier(
         model=model,
         num_classes=num_classes,

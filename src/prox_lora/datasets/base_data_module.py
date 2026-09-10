@@ -23,6 +23,7 @@ class DataLoaderConfig:
     num_workers: int = 0
     prefetch_factor: int | None = None  # Defaults to 2 if num_workers > 0.
     persistent_workers: bool = False
+    shuffle: bool | None = None  # If None, defaults to True for train_dataloader and False otherwise.
 
 
 class BaseDataModule[T](L.LightningDataModule):
@@ -53,13 +54,22 @@ class BaseDataModule[T](L.LightningDataModule):
         raise NotImplementedError()
 
     def train_dataloader(self) -> torch.utils.data.DataLoader[T]:
-        return torch.utils.data.DataLoader(self.train_dataset, **asdict(self.dataloader), shuffle=True)
+        kwargs = asdict(self.dataloader)
+        if "shuffle" not in kwargs or kwargs["shuffle"] is None:
+            kwargs["shuffle"] = True
+        return torch.utils.data.DataLoader(self.train_dataset, **kwargs)
 
     def val_dataloader(self) -> torch.utils.data.DataLoader[T]:
-        return torch.utils.data.DataLoader(self.val_dataset, **asdict(self.dataloader))
+        kwargs = asdict(self.dataloader)
+        if "shuffle" not in kwargs or kwargs["shuffle"] is None:
+            kwargs["shuffle"] = False
+        return torch.utils.data.DataLoader(self.val_dataset, **kwargs)
 
     def test_dataloader(self) -> torch.utils.data.DataLoader[T]:
-        return torch.utils.data.DataLoader(self.test_dataset, **asdict(self.dataloader))
+        kwargs = asdict(self.dataloader)
+        if "shuffle" not in kwargs or kwargs["shuffle"] is None:
+            kwargs["shuffle"] = False
+        return torch.utils.data.DataLoader(self.test_dataset, **kwargs)
 
     def get_class_frequencies(self) -> list[float]:
         """

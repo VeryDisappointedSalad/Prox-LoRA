@@ -23,13 +23,14 @@ class CLI:
     - skip_torch: if True, don't import and initialize torch and Lightning (which takes a few seconds).
     """
 
-    def __init__(self, main: Callable[[], None], *, skip_torch: bool = False) -> None:
+    def __init__(self, main: Callable[[], None] | None = None, *, skip_torch: bool = False) -> None:
         self.main = main
         self.skip_torch = skip_torch
 
     def run(self) -> None:
         self.before_main()
-        self.main()
+        if self.main is not None:
+            self.main()
 
     def before_main(self) -> None:
         dotenv.load_dotenv()
