@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from prox_lora.datasets.common import SizedDataset
 from prox_lora.infrastructure.cli import CLI
-from prox_lora.utils.eval import get_checkpoints_to_plot, load_for_eval
+from prox_lora.utils.eval import GROUPS, get_checkpoints_to_plot, load_for_eval
 from prox_lora.utils.io import PROJECT_ROOT, load_json, save_json_atomic
 
 
@@ -26,7 +26,7 @@ def run_noise_eval(
     mean_t = torch.tensor(list(OPENAI_DATASET_MEAN)).view(3, 1, 1).to(device)
     std_t = torch.tensor(list(OPENAI_DATASET_STD)).view(3, 1, 1).to(device)
 
-    noise_sigmas = list(np.linspace(0, 0.5, 20, endpoint=True))
+    noise_sigmas = list(np.linspace(0, 0.2, 20, endpoint=True))
     num_classes = config.model.num_classes
 
     metrics_per_sigma = {
@@ -94,30 +94,46 @@ def plot_robustness_curves(results_dict: dict[str, dict[str, list[float]]], outp
     output_dir.mkdir(exist_ok=True, parents=True)
     metrics_to_plot = ["Accuracy", "Quadratic_Kappa", "F1_Macro"]
 
+    group_to_ax = {"BMC_AdamW": (0, 0), "BMC_SGD": (0, 1), "conv_AdamW": (1, 0), "conv_SGD": (1, 1)}
+    label_to_line_style = {"base": "-", "ISTA": ":", "SAM": "--", "ProxSAM": "-."}
+
     for metric_name in metrics_to_plot:
-        plt.figure(figsize=(10, 6))
+        fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(10, 6), sharex=True, sharey=True)
+        fig.tight_layout()
+        fig.suptitle(rf"Robustness: {metric_name.replace('_', ' ')} vs Gaussian Noise ($\sigma$)", fontsize=14, y=1.01)
 
-        for model_name, data in results_dict.items():
-            sigmas = data["sigmas"]
-            metric_values = data[metric_name]
-            plt.plot(sigmas, metric_values, marker="o", linewidth=2, label=model_name)
+        for group_name, members in GROUPS.items():
+            ax = axs[group_to_ax[group_name]]
 
-        plt.title(rf"Robustness Curve: {metric_name.replace('_', ' ')} vs. Gaussian Noise ($\sigma$)")
-        plt.xlabel(r"Noise Standard Deviation ($\sigma$)")
-        plt.ylabel(metric_name.replace("_", " "))
-        plt.grid(visible=True, linestyle="--")
-        plt.legend(loc="lower left" if metric_name != "Accuracy" else "upper right")
-        plt.tight_layout()
+            for label, ckpt_name in members.items():
+                data = results_dict.get(ckpt_name)
+                assert data is not None, f"Checkpoint {ckpt_name} not found in results_dict."
+                sigmas = data["sigmas"]
+                metric_values = data[metric_name]
 
-        plot_path = output_dir / f"robustness_{metric_name.lower()}_curve.png"
-        plt.savefig(plot_path, dpi=300)
+                ls = label_to_line_style[label.removesuffix("Adapt")]
+                ax.plot(sigmas, metric_values, marker=".", linewidth=1, label=label, linestyle=ls)
+
+            # ax.set_title(group_name.replace("_", " with "))
+            ax.set_xlabel(r"Noise standard deviation ($\sigma$)")
+            ax.set_ylabel(metric_name.replace("_", " "))
+            ax.grid(visible=True, linestyle="--")
+            ax.legend(loc="upper right", title=group_name)
+            ax.set_xlim(0, 0.06)
+            if metric_name == "Quadratic_Kappa":
+                ax.set_ylim(0.3, 0.75)
+            else:
+                ax.set_ylim(0.3, 0.55)
+
+        plot_path = output_dir / f"noise_vs_{metric_name.lower()}.png"
+        fig.savefig(plot_path, dpi=300)
         plt.close()
         print(f"Generated plot: {plot_path}")
 
 
 def main(
-    target_count: int | None = 1024,
-    test_batch_size: int = 16,
+    target_count: int | None = None,
+    test_batch_size: int = 128,
     output_dir: str = "plots/robustness",
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
 ) -> None:
@@ -140,10 +156,7 @@ def main(
         print(f"\nEntering into {name}...")
 
         sigmas, history = run_noise_eval(
-            checkpoint_path=ckpt_path,
-            target_count=target_count,
-            test_batch_size=test_batch_size,
-            device=device,
+            checkpoint_path=ckpt_path, target_count=target_count, test_batch_size=test_batch_size, device=device
         )
 
         all_results[name] = {
@@ -153,9 +166,13 @@ def main(
             "F1_Macro": history["F1_Macro"],
         }
 
-        plot_robustness_curves(all_results, out_path)
         save_json_atomic(all_results, json_path)
 
+        # Plot only selected checkpoints, in the order given in `checkpoints`.
+        plot_robustness_curves(all_results, out_path)
+
+    # Re-plot in case all results were already ready.
+    plot_robustness_curves(all_results, out_path)
 
     print("\nAll tasks finalized successfully!")
 

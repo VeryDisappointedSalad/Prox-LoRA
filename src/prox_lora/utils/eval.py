@@ -8,6 +8,41 @@ from prox_lora.infrastructure.trainer import FullTrainConfig
 from prox_lora.models.classifier import Classifier
 from prox_lora.utils.io import PROJECT_ROOT, find_latest_checkpoint
 
+GROUPS ={
+  "BMC_SGD": {
+      "base": "bmc4_sgd",
+      "ISTA": "bmc4_pl1e-2_rho0",
+      "SAM": "bmc4_pl0_rho2e-3_lrx2",
+      "ProxSAM": "bmc4_pl1e-2_rho2e-3_lrx2"
+  },
+  "BMC_AdamW": {
+      "base": "bmc4_adamw",
+      "ISTA": "bmc4_proxsamadamw_pl1e-2_rho0",
+      "SAM": "bmc4_proxsamadamw_pl0_rho2e-3",
+      "ProxSAM": "bmc4_proxsamadamw_pl1e-2_rho2e-3",
+      "baseAdapt": "bmc4_proxsamadaptive_dummy",
+      # "ISTAAdapt": "bmc4_proxsamadaptive_pl1e-2_rho0",
+      "SAMAdapt": "bmc4_proxsamadaptive_pl0_rho2e-3",
+      # "ProxSAMAdapt": "bmc4_proxsamadaptive_pl1e-2_rho2e-3"
+  },
+  "conv_SGD": {
+      "base": "conv4_sgd_entropy",
+      "ISTA": "conv4_pl1e-4_rho0_entropy",
+      "SAM": "conv4_pl0_rho2e-2_entropy",
+      "ProxSAM": "conv4_pl1e-4_rho2e-2"
+  },
+  "conv_AdamW": {
+      "base": "conv4_proxsamadamw_dummy",
+      "ISTA": "conv4_proxsamadamw_pl1e-2_rho0",
+      "SAM": "conv4_proxsamadamw_pl0_rho2e-3",
+      "ProxSAM": "conv4_proxsamadamw_pl1e-2_rho2e-3",
+      "baseAdapt": "conv4_proxsamadaptive_dummy",
+      # "ISTAAdapt": "conv4_proxsamadaptive_pl1e-2_rho0",
+      "SAMAdapt": "conv4_proxsamadaptive_pl0_rho2e-3",
+      # "ProxSAMAdapt": "conv4_proxsamadaptive_pl1e-2_rho2e-3"
+      # "base'": "conv4_adamw",
+  }
+}
 
 def get_checkpoints_to_plot() -> dict[str, Path]:
     runs_root = PROJECT_ROOT / "runs"
@@ -25,6 +60,9 @@ def get_checkpoints_to_plot() -> dict[str, Path]:
 
     for d in sorted(runs_root.iterdir()):
         if d.is_dir() and d.name.startswith(("bmc4_", "conv4_")):
+        # if d.is_dir() and d.name.startswith(("bmc4_proxsama","bmc4_adamw")):
+        # if d.is_dir() and d.name.startswith(("bmc4_",)) and not d.name.startswith(("bmc4_proxsama","bmc4_adamw")):
+        # if d.is_dir() and d.name.startswith(("conv4_",)):
             model_directories[d.name] = d
 
     checkpoints = {}
@@ -32,6 +70,9 @@ def get_checkpoints_to_plot() -> dict[str, Path]:
         latest_ckpt = find_latest_checkpoint(dir_path)
         if latest_ckpt:
             checkpoints[name] = latest_ckpt
+            # obj = torch.load(latest_ckpt, map_location="cpu")
+            # epoch, step = obj["epoch"], obj["global_step"]
+            # assert epoch == 74 if "conv4_" in name else 29, f"Unexpected epoch for {name}: {epoch}"
             print(f"🔎 Found checkpoint for {name}: {latest_ckpt.relative_to(PROJECT_ROOT)}")
         else:
             print(f"No checkpoint found for {name} in: {dir_path}")
