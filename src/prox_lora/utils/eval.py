@@ -21,9 +21,9 @@ GROUPS ={
       "SAM": "bmc4_proxsamadamw_pl0_rho2e-3",
       "ProxSAM": "bmc4_proxsamadamw_pl1e-2_rho2e-3",
       "baseAdapt": "bmc4_proxsamadaptive_dummy",
-      # "ISTAAdapt": "bmc4_proxsamadaptive_pl1e-2_rho0",
+      "ISTAAdapt": "bmc4_proxsamadaptive_pl1e-3_rho0",
       "SAMAdapt": "bmc4_proxsamadaptive_pl0_rho2e-3",
-      # "ProxSAMAdapt": "bmc4_proxsamadaptive_pl1e-2_rho2e-3"
+      "ProxSAMAdapt": "bmc4_proxsamadaptive_pl1e-3_rho2e-3"
   },
   "conv_SGD": {
       "base": "conv4_sgd_entropy",
@@ -37,15 +37,56 @@ GROUPS ={
       "SAM": "conv4_proxsamadamw_pl0_rho2e-3",
       "ProxSAM": "conv4_proxsamadamw_pl1e-2_rho2e-3",
       "baseAdapt": "conv4_proxsamadaptive_dummy",
-      # "ISTAAdapt": "conv4_proxsamadaptive_pl1e-2_rho0",
+      "ISTAAdapt": "conv4_proxsamadaptive_pl1e-3_rho0",
       "SAMAdapt": "conv4_proxsamadaptive_pl0_rho2e-3",
-      # "ProxSAMAdapt": "conv4_proxsamadaptive_pl1e-2_rho2e-3"
+      "ProxSAMAdapt": "conv4_proxsamadaptive_pl1e-3_rho2e-3"
       # "base'": "conv4_adamw",
   }
 }
 
+# Color-blind friendly color scheme from:
+# https://sronpersonalpages.nl/~pault/#fig:scheme_rainbow_discrete
+# See https://sronpersonalpages.nl/~pault/#fig:scheme_rainbow_discrete_all for recommended subsets.
+COLORS = [
+  "#777777",
+  "#E8ECFB",
+  "#D9CCE3",
+  "#D1BBD7",
+  "#CAACCB",
+  "#BA8DB4",
+  "#AE76A3",
+  "#AA6F9E",
+  "#994F88",
+  "#882E72",
+  "#1965B0",
+  "#437DBF",
+  "#5289C7",
+  "#6195CF",
+  "#7BAFDE",
+  "#4EB265",
+  "#90C987",
+  "#CAE0AB",
+  "#F7F056",
+  "#F7CB45",
+  "#F6C141",
+  "#F4A736",
+  "#F1932D",
+  "#EE8026",
+  "#E8601C",
+  "#E65518",
+  "#DC050C",
+  "#A5170E",
+  "#72190E",
+  "#42150A",
+]
+
+GROUP_TO_AX = {"BMC_AdamW": (0, 0), "BMC_SGD": (0, 1), "conv_AdamW": (1, 0), "conv_SGD": (1, 1)}
+LABEL_TO_LINESTYLE = {"base": "-", "ISTA": ":", "SAM": "--", "ProxSAM": "-."}
+LABEL_TO_COLOR = {"base": COLORS[10], "ISTA": COLORS[15], "SAM": COLORS[24], "ProxSAM": COLORS[9],
+    "baseAdapt": COLORS[14], "ISTAAdapt": COLORS[17], "SAMAdapt": COLORS[21], "ProxSAMAdapt": COLORS[6]}
+
 def get_checkpoints_to_plot() -> dict[str, Path]:
-    runs_root = PROJECT_ROOT / "runs"
+    runs_root = PROJECT_ROOT / "runs" / "final"
 
     model_directories = {
         # "conv_ProxSAM": runs_root / "conv4_pl1e-4_rho2e-2/r1/"

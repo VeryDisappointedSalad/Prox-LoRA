@@ -120,5 +120,6 @@ register_configs(
         },
     ),
     deep_replace(bmc4_proxsamadamw_dummy, {"name": "bmc4_proxsamadamw_pl1e-2_rho2e-3_lrx2", "optimizer.prox_lambda": 1e-2, "optimizer.rho": 2e-3, "optimizer.lr": 4e-5}),
-
+    deep_replace(bmc4_proxsamadaptive_dummy, {"name": "bmc4_proxsamadaptive_pl1e-3_rho0", "optimizer.prox_lambda": 1e-3, "optimizer.rho": 0}),
+    deep_replace(bmc4_proxsamadaptive_dummy, {"name": "bmc4_proxsamadaptive_pl1e-3_rho2e-3", "optimizer.prox_lambda": 1e-3, "optimizer.rho": 2e-3}),
 )
