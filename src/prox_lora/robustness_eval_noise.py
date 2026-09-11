@@ -7,11 +7,19 @@ import torch
 import tyro
 from open_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
 from torchmetrics.classification import MulticlassAccuracy, MulticlassCohenKappa, MulticlassF1Score
+from torchmetrics.regression import MeanAbsoluteError, MeanSquaredError
 from tqdm import tqdm
 
 from prox_lora.datasets.common import SizedDataset
 from prox_lora.infrastructure.cli import CLI
-from prox_lora.utils.eval import GROUPS, get_checkpoints_to_plot, load_for_eval
+from prox_lora.utils.eval import (
+    GROUP_TO_AX,
+    GROUPS,
+    LABEL_TO_COLOR,
+    LABEL_TO_LINESTYLE,
+    get_checkpoints_to_plot,
+    load_for_eval,
+)
 from prox_lora.utils.io import PROJECT_ROOT, load_json, save_json_atomic
 
 
@@ -26,14 +34,18 @@ def run_noise_eval(
     mean_t = torch.tensor(list(OPENAI_DATASET_MEAN)).view(3, 1, 1).to(device)
     std_t = torch.tensor(list(OPENAI_DATASET_STD)).view(3, 1, 1).to(device)
 
-    noise_sigmas = list(np.linspace(0, 0.2, 20, endpoint=True))
+    # noise_sigmas = list(np.linspace(0, 0.2, 20, endpoint=True))
+    noise_sigmas = list(np.linspace(0, 0.06, 7, endpoint=True))
     num_classes = config.model.num_classes
 
     metrics_per_sigma = {
         sigma: {
             "Accuracy": MulticlassAccuracy(num_classes=num_classes, average="macro").to(device),
+            "Accuracy_micro": MulticlassAccuracy(num_classes=num_classes, average="micro").to(device),
             "Quadratic_Kappa": MulticlassCohenKappa(num_classes=num_classes, weights="quadratic").to(device),
             "F1_Macro": MulticlassF1Score(num_classes=num_classes, average="macro").to(device),
+            "MAE": MeanAbsoluteError().to(device),
+            "RMSE": MeanSquaredError(squared=False).to(device),
         }
         for sigma in noise_sigmas
     }
@@ -65,8 +77,11 @@ def run_noise_eval(
                     predictions = logits.argmax(dim=-1)
 
                     metrics_per_sigma[sigma]["Accuracy"].update(predictions, labels)
+                    metrics_per_sigma[sigma]["Accuracy_micro"].update(predictions, labels)
                     metrics_per_sigma[sigma]["Quadratic_Kappa"].update(predictions, labels)
                     metrics_per_sigma[sigma]["F1_Macro"].update(predictions, labels)
+                    metrics_per_sigma[sigma]["MAE"].update(predictions.float(), labels.float())
+                    metrics_per_sigma[sigma]["RMSE"].update(predictions.float(), labels.float())
 
                 current_count += added_count
                 pbar.update(added_count)
@@ -76,13 +91,25 @@ def run_noise_eval(
 
     print(f"\nEvaluated {current_count} images successfully.")
 
-    model_history: dict[str, list[float]] = {"Accuracy": [], "Quadratic_Kappa": [], "F1_Macro": []}
+    model_history: dict[str, list[float]] = {
+        "Accuracy": [],
+        "Quadratic_Kappa": [],
+        "F1_Macro": [],
+        "MAE": [],
+        "RMSE": [],
+        "Accuracy_micro": [],
+    }
     for sigma in noise_sigmas:
         model_history["Accuracy"].append(round(float(metrics_per_sigma[sigma]["Accuracy"].compute().item()), 4))
         model_history["Quadratic_Kappa"].append(
             round(float(metrics_per_sigma[sigma]["Quadratic_Kappa"].compute().item()), 4)
         )
         model_history["F1_Macro"].append(round(float(metrics_per_sigma[sigma]["F1_Macro"].compute().item()), 4))
+        model_history["MAE"].append(round(float(metrics_per_sigma[sigma]["MAE"].compute().item()), 4))
+        model_history["RMSE"].append(round(float(metrics_per_sigma[sigma]["RMSE"].compute().item()), 4))
+        model_history["Accuracy_micro"].append(
+            round(float(metrics_per_sigma[sigma]["Accuracy_micro"].compute().item()), 4)
+        )
 
     del model
     torch.cuda.empty_cache()
@@ -92,36 +119,51 @@ def run_noise_eval(
 
 def plot_robustness_curves(results_dict: dict[str, dict[str, list[float]]], output_dir: Path) -> None:
     output_dir.mkdir(exist_ok=True, parents=True)
-    metrics_to_plot = ["Accuracy", "Quadratic_Kappa", "F1_Macro"]
-
-    group_to_ax = {"BMC_AdamW": (0, 0), "BMC_SGD": (0, 1), "conv_AdamW": (1, 0), "conv_SGD": (1, 1)}
-    label_to_line_style = {"base": "-", "ISTA": ":", "SAM": "--", "ProxSAM": "-."}
+    metrics_to_plot = ["Accuracy", "Quadratic_Kappa", "F1_Macro"]  # , "MAE", "RMSE", "Accuracy_micro"]
 
     for metric_name in metrics_to_plot:
         fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(10, 6), sharex=True, sharey=True)
-        fig.tight_layout()
-        fig.suptitle(rf"Robustness: {metric_name.replace('_', ' ')} vs Gaussian Noise ($\sigma$)", fontsize=14, y=1.01)
+        fig.tight_layout(rect=(0.02, 0.015, 1.0, 0.95))  # left, bottom, right, top
+        fig.suptitle(rf"Robustness: {metric_name.replace('_', ' ')} vs Gaussian Noise ($\sigma$)", fontsize=14)
 
         for group_name, members in GROUPS.items():
-            ax = axs[group_to_ax[group_name]]
+            row, col = GROUP_TO_AX[group_name]
+            ax = axs[row, col]
 
             for label, ckpt_name in members.items():
                 data = results_dict.get(ckpt_name)
-                assert data is not None, f"Checkpoint {ckpt_name} not found in results_dict."
+                if data is None:
+                    print(f"Warning: Checkpoint {ckpt_name} not found in results_dict. Skipping.")
+                    continue
                 sigmas = data["sigmas"]
+                if metric_name not in data:
+                    print(f"Warning: Metric {metric_name} not found for checkpoint {ckpt_name}. Skipping.")
+                    continue
                 metric_values = data[metric_name]
 
-                ls = label_to_line_style[label.removesuffix("Adapt")]
-                ax.plot(sigmas, metric_values, marker=".", linewidth=1, label=label, linestyle=ls)
+                color = LABEL_TO_COLOR[label]
+                linestyle = LABEL_TO_LINESTYLE[label.removesuffix("Adapt")]
+                marker = "v" if "Adapt" in label else "."
+                ax.plot(
+                    sigmas, metric_values, marker=marker, color=color, linewidth=1, label=label, linestyle=linestyle
+                )
 
-            # ax.set_title(group_name.replace("_", " with "))
-            ax.set_xlabel(r"Noise standard deviation ($\sigma$)")
-            ax.set_ylabel(metric_name.replace("_", " "))
+            if row:
+                ax.set_xlabel(r"Noise standard deviation ($\sigma$)")
+            if not col:
+                ax.set_ylabel(metric_name.replace("_", " "))
+
             ax.grid(visible=True, linestyle="--")
-            ax.legend(loc="upper right", title=group_name)
+            ax.legend(
+                loc="lower right" if metric_name == "RMSE" else "upper right",
+                title=group_name.replace("_", " "),
+                fontsize=8 if "AdamW" in group_name else 10,
+            )
             ax.set_xlim(0, 0.06)
             if metric_name == "Quadratic_Kappa":
                 ax.set_ylim(0.3, 0.75)
+            elif metric_name == "RMSE":
+                ax.set_ylim(0.55, 1.25)
             else:
                 ax.set_ylim(0.3, 0.55)
 
@@ -140,7 +182,7 @@ def main(
     print("Starting Comprehensive Gaussian Noise Robustness Script...")
     out_path = PROJECT_ROOT / output_dir
 
-    checkpoints = get_checkpoints_to_plot()
+    # checkpoints = get_checkpoints_to_plot()
 
     all_results = dict[str, dict[str, list[float]]]()
     json_path = out_path / "robustness_noise_results.json"
@@ -148,28 +190,30 @@ def main(
         all_results = load_json(json_path)
         print(f"Loaded existing results for: {list(all_results.keys())}")
 
-    for name, ckpt_path in checkpoints.items():
-        if name in all_results:
-            print(f"Skipping {name}, already evaluated.")
-            continue
+    # for name, ckpt_path in checkpoints.items():
+    #     if name in all_results:
+    #         print(f"Skipping {name}, already evaluated.")
+    #         continue
 
-        print(f"\nEntering into {name}...")
+    #     print(f"\nEntering into {name}...")
 
-        sigmas, history = run_noise_eval(
-            checkpoint_path=ckpt_path, target_count=target_count, test_batch_size=test_batch_size, device=device
-        )
+    #     sigmas, history = run_noise_eval(
+    #         checkpoint_path=ckpt_path, target_count=target_count, test_batch_size=test_batch_size, device=device
+    #     )
 
-        all_results[name] = {
-            "sigmas": sigmas,
-            "Accuracy": history["Accuracy"],
-            "Quadratic_Kappa": history["Quadratic_Kappa"],
-            "F1_Macro": history["F1_Macro"],
-        }
+    #     all_results[name] = {
+    #         "sigmas": sigmas,
+    #         "Accuracy": history["Accuracy"],
+    #         "Quadratic_Kappa": history["Quadratic_Kappa"],
+    #         "F1_Macro": history["F1_Macro"],
+    #         "MAE": history["MAE"],
+    #         "RMSE": history["RMSE"],
+    #     }
 
-        save_json_atomic(all_results, json_path)
+    #     save_json_atomic(all_results, json_path)
 
-        # Plot only selected checkpoints, in the order given in `checkpoints`.
-        plot_robustness_curves(all_results, out_path)
+    #     # Plot only selected checkpoints, in the order given in `checkpoints`.
+    #     plot_robustness_curves(all_results, out_path)
 
     # Re-plot in case all results were already ready.
     plot_robustness_curves(all_results, out_path)
